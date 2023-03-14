@@ -7,7 +7,9 @@ import torch
 from torch import nn
 
 from direct.config import BaseConfig
+from direct.data import transforms as T
 from direct.nn.mri_models import MRIModelEngine
+from direct.nn.ssl.mri_models import SSDUMRIModelEngine
 
 
 class ConjGradNetEngine(MRIModelEngine):
@@ -58,3 +60,58 @@ class ConjGradNetEngine(MRIModelEngine):
         )  # shape (batch, height,  width)
         output_kspace = None
         return output_image, output_kspace
+
+
+class ConjGradNetSSDUEngine(SSDUMRIModelEngine):
+    def __init__(
+        self,
+        cfg: BaseConfig,
+        model: nn.Module,
+        device: str,
+        forward_operator: Optional[Callable] = None,
+        backward_operator: Optional[Callable] = None,
+        mixed_precision: bool = False,
+        **models: nn.Module,
+    ):
+        """Inits :class:`ConjGradNetSSDUEngine`.
+
+        Parameters
+        ----------
+        cfg: BaseConfig
+            Configuration file.
+        model: nn.Module
+            Model.
+        device: str
+            Device. Can be "cuda:{idx}" or "cpu".
+        forward_operator: Callable, optional
+            The forward operator. Default: None.
+        backward_operator: Callable, optional
+            The backward operator. Default: None.
+        mixed_precision: bool
+            Use mixed precision. Default: False.
+        **models: nn.Module
+            Additional models.
+        """
+        super().__init__(
+            cfg,
+            model,
+            device,
+            forward_operator=forward_operator,
+            backward_operator=backward_operator,
+            mixed_precision=mixed_precision,
+            **models,
+        )
+
+    def forward_function(self, data: Dict[str, Any]) -> Tuple[None, torch.Tensor]:
+        kspace = data["input_kspace"] if self.model.training else data["masked_kspace"]
+        mask = data["input_sampling_mask"] if self.model.training else data["sampling_mask"]
+        output_image = self.model(
+            masked_kspace=kspace,
+            sensitivity_map=data["sensitivity_map"],
+            sampling_mask=mask,
+        )
+        output_kspace = T.apply_padding(
+            kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
+            padding=data["padding"],
+        )
+        return None, output_kspace

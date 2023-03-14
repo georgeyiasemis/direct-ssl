@@ -239,8 +239,7 @@ def test_CropKspace(
     [(3, 10, 16)],
 )
 @pytest.mark.parametrize(
-    "type",
-    [RandomFlipType.horizontal, RandomFlipType.vertical, RandomFlipType.random],
+    "type", [RandomFlipType.horizontal, RandomFlipType.vertical, RandomFlipType.random, RandomFlipType.both]
 )
 def test_random_flip(shape, type):
     sample = create_sample(shape=shape + (2,))
@@ -249,13 +248,15 @@ def test_random_flip(shape, type):
     sample = transform(sample)
     flipped_kspace = sample["kspace"]
     if type == "horizontal":
-        assert np.allclose(np.flip(kspace, 2), flipped_kspace, 0.0001)
-    elif type == "vertical":
         assert np.allclose(np.flip(kspace, 1), flipped_kspace, 0.0001)
-    else:
+    elif type == "vertical":
+        assert np.allclose(np.flip(kspace, 2), flipped_kspace, 0.0001)
+    elif type == "random":
         assert np.allclose(np.flip(kspace, 1), flipped_kspace, 0.0001) | np.allclose(
             np.flip(kspace, 2), flipped_kspace, 0.0001
         )
+    else:
+        assert np.allclose(np.flip(kspace, (1, 2)), flipped_kspace, 0.0001)
 
 
 @pytest.mark.parametrize(

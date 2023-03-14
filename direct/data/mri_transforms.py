@@ -12,12 +12,12 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 
 import numpy as np
 import torch
-import torchvision
 
 from direct.algorithms.mri_algorithms import EspiritCalibration
 from direct.data import transforms as T
 from direct.exceptions import ItemNotFoundException
-from direct.types import DirectEnum, KspaceKey
+from direct.ssl.ssl import GaussianMaskSplitterModule, UniformMaskSplitterModule
+from direct.types import DirectEnum, KspaceKey, TransformKey
 from direct.utils import DirectModule, DirectTransform
 from direct.utils.asserts import assert_complex
 
@@ -80,7 +80,7 @@ class RandomRotation(DirectTransform):
         self,
         degrees: Sequence[int] = (-90, 90),
         p: float = 0.5,
-        kspace_key: KspaceKey = KspaceKey.kspace,
+        keys_to_rotate: Tuple[TransformKey, ...] = (TransformKey.kspace,),
     ):
         r"""Inits :class:`RandomRotation`.
 
@@ -90,9 +90,9 @@ class RandomRotation(DirectTransform):
             Degrees of rotation. Must be a multiple of 90. If len(degrees) > 1, then a degree will be chosen at random.
             Default: (-90, 90).
         p: float
-            Probability of the backprojected :math:`k`-space being rotated. Default: 0.5
-        kspace_key: KspaceKey
-            Default: KspaceKey.kspace.
+            Probability of rotation. Default: 0.5
+        keys_to_rotate : tuple of TransformKeys
+            Keys to rotate. Default: "kspace".
         """
         super().__init__()
 
@@ -100,7 +100,7 @@ class RandomRotation(DirectTransform):
 
         self.degrees = degrees
         self.p = p
-        self.kspace_key = kspace_key
+        self.keys_to_rotate = keys_to_rotate
 
     def __call__(self, sample: Dict[str, Any]) -> Dict[str, Any]:
         """Calls :class:`RandomRotation`.
@@ -113,14 +113,15 @@ class RandomRotation(DirectTransform):
         Returns
         -------
         Dict[str, Any]
-            Sample with rotated :math:`k`-space.
+            Sample with rotated values of `keys_to_rotate`.
         """
         if random.SystemRandom().random() <= self.p:
-            kspace = T.view_as_complex(sample[self.kspace_key].clone())
             degree = random.SystemRandom().choice(self.degrees)
             k = degree // 90
-            rotated_kspace = torch.rot90(kspace, k=k, dims=(1, 2))
-            sample[self.kspace_key] = T.view_as_real(rotated_kspace)
+            for key in self.keys_to_rotate:
+                if key in sample:
+                    value = T.view_as_complex(sample[key].clone())
+                    sample[key] = T.view_as_real(torch.rot90(value, k=k, dims=(1, 2)))
 
             # If rotated by multiples of (n + 1) * 90 degrees, reconstruction size also needs to change
             reconstruction_size = sample.get("reconstruction_size", None)
@@ -134,6 +135,7 @@ class RandomFlipType(DirectEnum):
     horizontal = "horizontal"
     vertical = "vertical"
     random = "random"
+    both = "both"
 
 
 class RandomFlip(DirectTransform):
@@ -146,7 +148,7 @@ class RandomFlip(DirectTransform):
         self,
         flip: RandomFlipType = RandomFlipType.random,
         p: float = 0.5,
-        kspace_key: KspaceKey = KspaceKey.kspace,
+        keys_to_flip: Tuple[TransformKey, ...] = (TransformKey.kspace,),
     ):
         r"""Inits :class:`RandomFlip`.
 
@@ -155,21 +157,15 @@ class RandomFlip(DirectTransform):
         flip : RandomFlipType
             Horizontal, vertical, or random choice of the two. Default: RandomFlipType.random.
         p : float
-            Probability of the backprojected :math:`k`-space being flipped. Default: 0.5
-        kspace_key : KspaceKey
-            Default: KspaceKey.kspace.
+            Probability of flip. Default: 0.5
+        keys_to_flip : tuple of TransformKeys
+            Keys to flip. Default: "kspace".
         """
         super().__init__()
 
-        if flip == "horizontal":
-            self.flipper = torchvision.transforms.RandomHorizontalFlip(p=p)
-        elif flip == "vertical":
-            self.flipper = torchvision.transforms.RandomVerticalFlip(p=p)
-        else:
-            self.flipper = random.SystemRandom().choice(
-                [torchvision.transforms.RandomHorizontalFlip(p=p), torchvision.transforms.RandomVerticalFlip(p=p)]
-            )
-        self.kpace_key = kspace_key
+        self.flip = flip
+        self.p = p
+        self.keys_to_flip = keys_to_flip
 
     def __call__(self, sample: Dict[str, Any]) -> Dict[str, Any]:
         """Calls :class:`RandomFlip`.
@@ -182,11 +178,24 @@ class RandomFlip(DirectTransform):
         Returns
         -------
         Dict[str, Any]
-            Sample with flipped :math:`k`-space.
+            Sample with flipped values of `keys_to_flip`.
         """
-        kspace = T.view_as_complex(sample[self.kpace_key].clone())
-        kspace = self.flipper(kspace)
-        sample[self.kpace_key] = T.view_as_real(kspace)
+        if random.SystemRandom().random() <= self.p:
+            dims = (
+                (1,)
+                if self.flip == "horizontal"
+                else (2,)
+                if self.flip == "vertical"
+                else (1, 2)
+                if self.flip == "both"
+                else (random.SystemRandom().choice([1, 2]),)
+            )
+
+            for key in self.keys_to_flip:
+                if key in sample:
+                    value = T.view_as_complex(sample[key].clone())
+                    value = torch.flip(value, dims=dims)
+                    sample[key] = T.view_as_real(value)
 
         return sample
 
@@ -977,21 +986,21 @@ class ComputeScalingFactorModule(DirectModule):
 
     def __init__(
         self,
-        normalize_key: Union[None, str] = "masked_kspace",
+        normalize_key: Union[None, TransformKey] = TransformKey.masked_kspace,
         percentile: Union[None, float] = 0.99,
-        scaling_factor_key: str = "scaling_factor",
+        scaling_factor_key: TransformKey = TransformKey.scaling_factor,
     ):
         """Inits :class:`ComputeScalingFactorModule`.
 
         Parameters
         ----------
-        normalize_key : str or None
+        normalize_key : TransformKey or None
             Key name to compute the data for. If the maximum has to be computed on the ACS, ensure the reconstruction
             on the ACS is available (typically `body_coil_image`). Default: "masked_kspace".
         percentile : float or None
             Rescale data with the given percentile. If None, the division is done by the maximum. Default: 0.99.
-        scaling_factor_key : str
-            Name of how the scaling factor will be stored. Default: 'scaling_factor'.
+        scaling_factor_key : TransformKey
+            Name of how the scaling factor will be stored. Default: "scaling_factor".
         """
         super().__init__()
         self.normalize_key = normalize_key
@@ -1039,14 +1048,14 @@ class NormalizeModule(DirectModule):
 
     def __init__(
         self,
-        scaling_factor_key: str = "scaling_factor",
-        keys_to_normalize: Optional[List[str]] = None,
+        scaling_factor_key: TransformKey = TransformKey.scaling_factor,
+        keys_to_normalize: Optional[List[TransformKey]] = None,
     ):
         """Inits :class:`NormalizeModule`.
 
         Parameters
         ----------
-        scaling_factor_key : str
+        scaling_factor_key : TransformKey
             Name of scaling factor key expected in sample. Default: 'scaling_factor'.
         """
         super().__init__()
@@ -1177,6 +1186,8 @@ class ModuleWrapper:
                 for k, v in sample.items():
                     if isinstance(v, (torch.Tensor, np.ndarray)):
                         sample[k] = v[None]
+                    else:
+                        sample[k] = [v]
 
             sample = self._transform.forward(sample)
 
@@ -1184,11 +1195,10 @@ class ModuleWrapper:
                 for k, v in sample.items():
                     if isinstance(v, (torch.Tensor, np.ndarray)):
                         sample[k] = v.squeeze(0)
+                    else:
+                        sample[k] = v[0]
 
             return sample
-
-        def __repr__(self):
-            return self._transform.__repr__()
 
     def __init__(self, module: Callable, toggle_dims: bool):
         self._module = module
@@ -1207,6 +1217,8 @@ PadCoilDimension = ModuleWrapper(PadCoilDimensionModule, toggle_dims=True)
 ComputeScalingFactor = ModuleWrapper(ComputeScalingFactorModule, toggle_dims=True)
 Normalize = ModuleWrapper(NormalizeModule, toggle_dims=False)
 WhitenData = ModuleWrapper(WhitenDataModule, toggle_dims=False)
+GaussianMaskSplitter = ModuleWrapper(GaussianMaskSplitterModule, toggle_dims=True)
+UniformMaskSplitter = ModuleWrapper(UniformMaskSplitterModule, toggle_dims=True)
 
 
 class ToTensor(DirectTransform):
@@ -1349,10 +1361,20 @@ def build_pre_mri_transforms(
         ]
     if random_rotation:
         mri_transforms += [
-            RandomRotation(degrees=random_rotation_degrees, p=random_rotation_probability, kspace_key=KspaceKey.kspace)
+            RandomRotation(
+                degrees=random_rotation_degrees,
+                p=random_rotation_probability,
+                keys_to_rotate=(TransformKey.kspace, TransformKey.sensitivity_map),
+            )
         ]
     if random_flip:
-        mri_transforms += [RandomFlip(flip=random_flip_type, p=random_flip_probability, kspace_key=KspaceKey.kspace)]
+        mri_transforms += [
+            RandomFlip(
+                flip=random_flip_type,
+                p=random_flip_probability,
+                keys_to_flip=(TransformKey.kspace, TransformKey.sensitivity_map),
+            )
+        ]
     if mask_func:
         mri_transforms += [
             ComputeZeroPadding(KspaceKey.kspace, "padding", padding_eps),
@@ -1383,7 +1405,7 @@ def build_post_mri_transforms(
     delete_acs_mask: bool = True,
     delete_kspace: bool = True,
     image_recon_type: ReconstructionType = ReconstructionType.rss,
-    scaling_key: KspaceKey = KspaceKey.masked_kspace,
+    scaling_key: TransformKey = TransformKey.masked_kspace,
     scale_percentile: Optional[float] = 0.99,
 ) -> object:
     """Build transforms for MRI.
@@ -1421,8 +1443,8 @@ def build_post_mri_transforms(
         If True will delete key `kspace` (fully sampled k-space). Default: True.
     image_recon_type : ReconstructionType
         Type to reconstruct target image. Default: ReconstructionType.rss.
-    scaling_key : KspaceKey
-        Key in sample to scale scalable items in sample. Default: KspaceKey.masked_kspace.
+    scaling_key : TransformKey
+        Key in sample to scale scalable items in sample. Default: TransformKey.masked_kspace.
     scale_percentile : float, optional
         Data will be rescaled with the given percentile. If None, the division is done by the maximum. Default: 0.99
         the same mask every time. Default: True.
@@ -1469,9 +1491,9 @@ def build_post_mri_transforms(
         ComputeScalingFactorModule(
             normalize_key=scaling_key,
             percentile=scale_percentile,
-            scaling_factor_key="scaling_factor",
+            scaling_factor_key=TransformKey.scaling_factor,
         ),
-        NormalizeModule(scaling_factor_key="scaling_factor"),
+        NormalizeModule(scaling_factor_key=TransformKey.scaling_factor),
     ]
     if delete_kspace:
         mri_transforms += [DeleteKeysModule(keys=[KspaceKey.kspace])]
@@ -1479,7 +1501,7 @@ def build_post_mri_transforms(
     return Compose(mri_transforms)
 
 
-def build_mri_transforms(
+def build_supervised_mri_transforms(
     forward_operator: Callable,
     backward_operator: Callable,
     mask_func: Optional[Callable],
@@ -1505,7 +1527,7 @@ def build_mri_transforms(
     delete_kspace: bool = True,
     image_recon_type: ReconstructionType = ReconstructionType.rss,
     pad_coils: Optional[int] = None,
-    scaling_key: KspaceKey = KspaceKey.masked_kspace,
+    scaling_key: TransformKey = TransformKey.masked_kspace,
     scale_percentile: Optional[float] = 0.99,
     use_seed: bool = True,
 ) -> object:
@@ -1577,8 +1599,8 @@ def build_mri_transforms(
         Type to reconstruct target image. Default: ReconstructionType.rss.
     pad_coils : int
         Number of coils to pad data to.
-    scaling_key : KspaceKey
-        Key in sample to scale scalable items in sample. Default: KspaceKey.masked_kspace.
+    scaling_key : TransformKey
+        Key in sample to scale scalable items in sample. Default: TransformKey.masked_kspace.
     scale_percentile : float, optional
         Data will be rescaled with the given percentile. If None, the division is done by the maximum. Default: 0.99
     use_seed : bool
@@ -1606,10 +1628,20 @@ def build_mri_transforms(
         ]
     if random_rotation:
         mri_transforms += [
-            RandomRotation(degrees=random_rotation_degrees, p=random_rotation_probability, kspace_key=KspaceKey.kspace)
+            RandomRotation(
+                degrees=random_rotation_degrees,
+                p=random_rotation_probability,
+                keys_to_rotate=(TransformKey.kspace, TransformKey.sensitivity_map),
+            )
         ]
     if random_flip:
-        mri_transforms += [RandomFlip(flip=random_flip_type, p=random_flip_probability, kspace_key=KspaceKey.kspace)]
+        mri_transforms += [
+            RandomFlip(
+                flip=random_flip_type,
+                p=random_flip_probability,
+                keys_to_flip=(TransformKey.kspace, TransformKey.sensitivity_map),
+            )
+        ]
     if mask_func:
         mri_transforms += [
             ComputeZeroPadding(KspaceKey.kspace, "padding", padding_eps),
@@ -1646,12 +1678,6 @@ def build_mri_transforms(
         mri_transforms += [DeleteKeys(keys=["acs_mask"])]
 
     mri_transforms += [
-        ComputeImage(
-            kspace_key=KspaceKey.kspace,
-            target_key="target",
-            backward_operator=backward_operator,
-            type_reconstruction=image_recon_type,
-        ),
         ApplyMask(
             sampling_mask_key="sampling_mask",
             input_kspace_key=KspaceKey.kspace,
@@ -1661,12 +1687,229 @@ def build_mri_transforms(
 
     mri_transforms += [
         ComputeScalingFactor(
-            normalize_key=scaling_key, percentile=scale_percentile, scaling_factor_key="scaling_factor"
+            normalize_key=scaling_key, percentile=scale_percentile, scaling_factor_key=TransformKey.scaling_factor
         ),
-        Normalize(scaling_factor_key="scaling_factor"),
+        Normalize(
+            scaling_factor_key=TransformKey.scaling_factor,
+            keys_to_normalize=[KspaceKey.kspace, KspaceKey.masked_kspace],
+        ),
+    ]
+
+    mri_transforms += [
+        ComputeImage(
+            kspace_key=KspaceKey.kspace,
+            target_key=TransformKey.target,
+            backward_operator=backward_operator,
+            type_reconstruction=image_recon_type,
+        )
     ]
 
     if delete_kspace:
         mri_transforms += [DeleteKeys(keys=[KspaceKey.kspace])]
+
+    return Compose(mri_transforms)
+
+
+def build_mri_transforms(
+    forward_operator: Callable,
+    backward_operator: Callable,
+    mask_func: Optional[Callable],
+    crop: Optional[Union[Tuple[int, int], str]] = None,
+    crop_type: Optional[str] = "uniform",
+    image_center_crop: bool = True,
+    random_rotation: bool = False,
+    random_rotation_degrees: Optional[Sequence[int]] = (-90, 90),
+    random_rotation_probability: Optional[float] = 0.5,
+    random_flip: bool = False,
+    random_flip_type: Optional[RandomFlipType] = RandomFlipType.random,
+    random_flip_probability: Optional[float] = 0.5,
+    padding_eps: float = 0.0001,
+    estimate_body_coil_image: bool = False,
+    estimate_sensitivity_maps: bool = True,
+    sensitivity_maps_type: SensitivityMapType = SensitivityMapType.rss_estimate,
+    sensitivity_maps_gaussian: Optional[float] = None,
+    sensitivity_maps_espirit_threshold: Optional[float] = 0.05,
+    sensitivity_maps_espirit_kernel_size: Optional[int] = 6,
+    sensitivity_maps_espirit_crop: Optional[float] = 0.95,
+    sensitivity_maps_espirit_max_iters: Optional[int] = 30,
+    delete_acs_mask: bool = True,
+    delete_kspace: bool = True,
+    image_recon_type: ReconstructionType = ReconstructionType.rss,
+    pad_coils: Optional[int] = None,
+    scaling_key: TransformKey = TransformKey.masked_kspace,
+    scale_percentile: Optional[float] = 0.99,
+    use_seed: bool = True,
+    ssl_transforms: Optional[str] = None,
+    mask_split_ratio: Union[float, List[float], Tuple[float, ...]] = 0.4,
+    mask_split_acs_region: Union[List[int], Tuple[int, int]] = (0, 0),
+    mask_split_keep_acs: Optional[bool] = False,
+    mask_split_type: str = "gaussian",
+    mask_split_gaussian_std: float = 3.0,
+) -> object:
+    """Build transforms for MRI.
+
+    - Converts input to (complex-valued) tensor.
+    - Adds a sampling mask if `mask_func` is defined.
+    - Adds coil sensitivities and / or the body coil_image
+    - Crops the input data if needed and masks the fully sampled k-space.
+    - Add a target.
+    - Normalize input data.
+    - Pads the coil dimension.
+
+    Parameters
+    ----------
+    forward_operator : Callable
+        The forward operator, e.g. some form of FFT (centered or uncentered).
+    backward_operator : Callable
+        The backward operator, e.g. some form of inverse FFT (centered or uncentered).
+    mask_func : Callable or None
+        A function which creates a sampling mask of the appropriate shape.
+    crop : Tuple[int, int] or str, Optional
+        If not None, this will transform the "kspace" to an image domain, crop it, and transform it back.
+        If a tuple of integers is given then it will crop the backprojected kspace to that size. If
+        "reconstruction_size" is given, then it will crop the backprojected kspace according to it, but
+        a key "reconstruction_size" must be present in the sample. Default: None.
+    crop_type : Optional[str]
+        Type of cropping, either "gaussian" or "uniform". This will be ignored if `crop` is None. Default: "uniform".
+    image_center_crop : bool
+        If True the backprojected kspace will be cropped around the center, otherwise randomly.
+        This will be ignored if `crop` is None. Default: True.
+    random_rotation : bool
+        If True, random rotations will be applied of `random_rotation_degrees` degrees, with probability
+        `random_rotation_probability`. Default: False.
+    random_rotation_degrees : Sequence[int], optional
+        Default: (-90, 90).
+    random_rotation_probability : float, optional
+        Default: 0.5.
+    random_flip : bool
+        If True, random rotation of `random_flip_type` type, with probability `random_flip_probability`. Default: False.
+    random_flip_type : RandomFlipType, optional
+        Default: RandomFlipType.random.
+    random_flip_probability : float, optional
+        Default: 0.5.
+    padding_eps: float
+        Padding epsilon. Default: 0.0001.
+    estimate_body_coil_image : bool
+        Estimate body coil image. Default: False.
+    estimate_sensitivity_maps : bool
+        Estimate sensitivity maps using the acs region. Default: True.
+    sensitivity_maps_type: sensitivity_maps_type
+        Can be SensitivityMapType.rss_estimate, SensitivityMapType.unit or SensitivityMapType.espirit.
+        Will be ignored if `estimate_sensitivity_maps`==False. Default: SensitivityMapType.rss_estimate.
+    sensitivity_maps_gaussian : float
+        Optional sigma for gaussian weighting of sensitivity map.
+    sensitivity_maps_espirit_threshold: float, optional
+            Threshold for the calibration matrix when `type_of_map`=="espirit". Default: 0.05.
+    sensitivity_maps_espirit_kernel_size: int, optional
+        Kernel size for the calibration matrix when `type_of_map`=="espirit". Default: 6.
+    sensitivity_maps_espirit_crop: float, optional
+        Output eigenvalue cropping threshold when `type_of_map`=="espirit". Default: 0.95.
+    sensitivity_maps_espirit_max_iters: int, optional
+        Power method iterations when `type_of_map`=="espirit". Default: 30.
+    delete_acs_mask : bool
+        If True will delete key `acs_mask`. Default: True.
+    delete_kspace : bool
+        If True will delete key `kspace` (fully sampled k-space). Default: True.
+    image_recon_type : ReconstructionType
+        Type to reconstruct target image. Default: ReconstructionType.rss.
+    pad_coils : int
+        Number of coils to pad data to.
+    scaling_key : KspaceKey
+        Key in sample to scale scalable items in sample. Default: KspaceKey.masked_kspace.
+    scale_percentile : float, optional
+        Data will be rescaled with the given percentile. If None, the division is done by the maximum. Default: 0.99
+    use_seed : bool
+        If true, a pseudo-random number based on the filename is computed so that every slice of the volume get
+        the same mask every time. Default: True.
+    ssl_transforms : str, optional
+        If not None, "ssdu" or "dualssl" can be used. Default: None.
+    mask_split_ratio : Union[float, List[float], Tuple[float, ...]]
+        The ratio(s) of the sampling mask splitting. If `ssl_transforms` is None, this is ignored.
+    mask_split_acs_region : Union[List[int], Tuple[int, int]]
+        A rectangle for the acs region that will be used in the :math:`\Theta` mask (if `ssl_transforms` = "dualssl")
+        or input mask (if `ssl_transforms` = "ssdu"). Default: (0, 0).
+    mask_split_keep_acs : Optional[bool]
+        If True, acs region according to the "acs_mask" of the sample will be used in both mask splits. Default: False.
+    mask_split_type : str
+        How the sampling mask will be split. Can be "uniform" or "gaussian". Default: "gaussian".
+    mask_split_gaussian_std : float
+        Standard deviation of gaussian mask splitting. Ignored if `mask_split_type` is not "gaussian". Default: 3.0.
+
+    Returns
+    -------
+    object: Callable
+        An MRI transformation object.
+    """
+    mri_transforms = build_supervised_mri_transforms(
+        forward_operator=forward_operator,
+        backward_operator=backward_operator,
+        mask_func=mask_func,
+        crop=crop,
+        crop_type=crop_type,
+        image_center_crop=image_center_crop,
+        random_rotation=random_rotation,
+        random_rotation_degrees=random_rotation_degrees,
+        random_rotation_probability=random_rotation_probability,
+        random_flip=random_flip,
+        random_flip_type=random_flip_type,
+        random_flip_probability=random_flip_probability,
+        padding_eps=padding_eps,
+        estimate_sensitivity_maps=estimate_sensitivity_maps,
+        sensitivity_maps_type=sensitivity_maps_type,
+        estimate_body_coil_image=estimate_body_coil_image,
+        sensitivity_maps_gaussian=sensitivity_maps_gaussian,
+        sensitivity_maps_espirit_threshold=sensitivity_maps_espirit_threshold,
+        sensitivity_maps_espirit_kernel_size=sensitivity_maps_espirit_kernel_size,
+        sensitivity_maps_espirit_crop=sensitivity_maps_espirit_crop,
+        sensitivity_maps_espirit_max_iters=sensitivity_maps_espirit_max_iters,
+        delete_acs_mask=delete_acs_mask if ssl_transforms is None else False,
+        delete_kspace=delete_kspace if ssl_transforms is None else False,
+        image_recon_type=image_recon_type,
+        pad_coils=pad_coils,
+        scaling_key=scaling_key,
+        scale_percentile=scale_percentile,
+        use_seed=use_seed,
+    ).transforms
+    if ssl_transforms is None:
+        return Compose(mri_transforms)
+
+    assert ssl_transforms in ["dualssl", "ssdu", "noisier2noise"]
+    mask_splitter_kwargs = {
+        "ratio": mask_split_ratio,
+        "acs_region": mask_split_acs_region,
+        "keep_acs": mask_split_keep_acs,
+        "use_seed": use_seed,
+        "kspace_key": "masked_kspace",
+    }
+    mri_transforms += [
+        GaussianMaskSplitter(**mask_splitter_kwargs, std_scale=mask_split_gaussian_std)
+        if mask_split_type == "gaussian"
+        else UniformMaskSplitter(**mask_splitter_kwargs),
+        DeleteKeys(["acs_mask"]),
+    ]
+    if ssl_transforms == "ssdu":
+        mri_transforms += [
+            RenameKeys(
+                ["lambda_sampling_mask", "theta_sampling_mask", "theta_masked_kspace", "lambda_masked_kspace"],
+                ["target_sampling_mask", "input_sampling_mask", "input_kspace", "kspace"],
+            ),
+            DeleteKeys(["masked_kspace", "sampling_mask"]),
+        ]
+    elif ssl_transforms == "noisier2noise":
+        mri_transforms += [
+            DeleteKeys(["lambda_sampling_mask", "lambda_masked_kspace"]),  # Do not need 2nd mask for Noisier2Noise
+            RenameKeys(
+                ["theta_sampling_mask", "theta_masked_kspace", "masked_kspace"],
+                ["noisier_sampling_mask", "noisier_kspace", "kspace"],
+            ),
+        ]
+    mri_transforms += [
+        ComputeImage(
+            kspace_key="kspace",
+            target_key="target",
+            backward_operator=backward_operator,
+            type_reconstruction=image_recon_type,
+        )
+    ]
 
     return Compose(mri_transforms)

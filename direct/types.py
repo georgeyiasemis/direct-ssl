@@ -46,3 +46,13 @@ class DirectEnum(str, Enum):
 class KspaceKey(DirectEnum):
     kspace = "kspace"
     masked_kspace = "masked_kspace"
+
+
+class TransformKey(DirectEnum):
+    sensitivity_map = "sensitivity_map"
+    target = "target"
+    kspace = "kspace"
+    masked_kspace = "masked_kspace"
+    sampling_mask = "sampling_mask"
+    acs_mask = "acs_mask"
+    scaling_factor = "scaling_factor"

@@ -1,7 +1,7 @@
 # coding=utf-8
 # Copyright (c) DIRECT Contributors
 
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import torch
 from torch import nn
@@ -11,6 +11,7 @@ import direct.data.transforms as T
 from direct.config import BaseConfig
 from direct.engine import DoIterationOutput
 from direct.nn.mri_models import MRIModelEngine
+from direct.nn.ssl.mri_models import *
 from direct.utils import detach_dict, dict_to_device, reduce_list_of_dicts
 
 
@@ -147,3 +148,171 @@ class RIMEngine(MRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
             data_dict={**loss_dict, **regularizer_dict},
         )
+
+
+class RIMSSDUEngine(SSDUMRIModelEngine):
+    """Recurrent Inference Machine SSDU Engine."""
+
+    def __init__(
+        self,
+        cfg: BaseConfig,
+        model: nn.Module,
+        device: str,
+        forward_operator: Optional[Callable] = None,
+        backward_operator: Optional[Callable] = None,
+        mixed_precision: bool = False,
+        **models: nn.Module,
+    ):
+        super().__init__(
+            cfg,
+            model,
+            device,
+            forward_operator=forward_operator,
+            backward_operator=backward_operator,
+            mixed_precision=mixed_precision,
+            **models,
+        )
+
+    def forward_function(self, data: Dict[str, Any]) -> Tuple[torch.Tensor, None]:
+        masked_kspace = data["input_kspace"] if self.model.training else data["masked_kspace"]
+        sampling_mask = data["input_sampling_mask"] if self.model.training else data["sampling_mask"]
+        sensitivity_map = data["sensitivity_map"]
+        scaling_factor = torch.tensor([1.0]).to(masked_kspace.device)
+        output, _ = self.model(
+            input_image=None,
+            hidden_state=None,
+            masked_kspace=masked_kspace,
+            sampling_mask=sampling_mask,
+            sensitivity_map=sensitivity_map,
+            loglikelihood_scaling=scaling_factor,
+        )
+        output_image = output[-1].permute(0, 2, 3, 1)
+
+        return output_image, None
+
+
+class RIMDualSSLEngine(DualSSLMRIModelEngine):
+    """Recurrent Inference Machine DualSSL Engine."""
+
+    def __init__(
+        self,
+        cfg: BaseConfig,
+        model: nn.Module,
+        device: str,
+        forward_operator: Optional[Callable] = None,
+        backward_operator: Optional[Callable] = None,
+        mixed_precision: bool = False,
+        **models: nn.Module,
+    ):
+        super().__init__(
+            cfg,
+            model,
+            device,
+            forward_operator=forward_operator,
+            backward_operator=backward_operator,
+            mixed_precision=mixed_precision,
+            **models,
+        )
+
+    def forward_function(
+        self,
+        data: Dict[str, Any],
+        masked_kspace: torch.Tensor,
+        sampling_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, None]:
+        scaling_factor = torch.tensor([1.0]).to(masked_kspace.device)
+        output, _ = self.model(
+            input_image=None,
+            hidden_state=None,
+            masked_kspace=masked_kspace,
+            sampling_mask=sampling_mask,
+            sensitivity_map=data["sensitivity_map"],
+            loglikelihood_scaling=scaling_factor,
+        )
+        output_image = output[-1].permute(0, 2, 3, 1)
+
+        return output_image, None
+
+
+class RIMDualSSL2Engine(DualSSL2MRIModelEngine):
+    """Recurrent Inference Machine DualSSL2 Engine."""
+
+    def __init__(
+        self,
+        cfg: BaseConfig,
+        model: nn.Module,
+        device: str,
+        forward_operator: Optional[Callable] = None,
+        backward_operator: Optional[Callable] = None,
+        mixed_precision: bool = False,
+        **models: nn.Module,
+    ):
+        super().__init__(
+            cfg,
+            model,
+            device,
+            forward_operator=forward_operator,
+            backward_operator=backward_operator,
+            mixed_precision=mixed_precision,
+            **models,
+        )
+
+    def forward_function(
+        self,
+        data: Dict[str, Any],
+        masked_kspace: torch.Tensor,
+        sampling_mask: torch.Tensor,
+    ) -> Tuple[torch.Tensor, None]:
+        scaling_factor = torch.tensor([1.0]).to(masked_kspace.device)
+        output, _ = self.model(
+            input_image=None,
+            hidden_state=None,
+            masked_kspace=masked_kspace,
+            sampling_mask=sampling_mask,
+            sensitivity_map=data["sensitivity_map"],
+            loglikelihood_scaling=scaling_factor,
+        )
+        output_image = output[-1].permute(0, 2, 3, 1)
+
+        return output_image, None
+
+
+class RIMN2NEngine(N2NMRIModelEngine):
+    """Recurrent Inference Machine Noisier To Noise Engine."""
+
+    def __init__(
+        self,
+        cfg: BaseConfig,
+        model: nn.Module,
+        device: str,
+        forward_operator: Optional[Callable] = None,
+        backward_operator: Optional[Callable] = None,
+        mixed_precision: bool = False,
+        **models: nn.Module,
+    ):
+        super().__init__(
+            cfg,
+            model,
+            device,
+            forward_operator=forward_operator,
+            backward_operator=backward_operator,
+            mixed_precision=mixed_precision,
+            **models,
+        )
+
+    def forward_function(self, data: Dict[str, Any]) -> Tuple[torch.Tensor, None]:
+        masked_kspace = data["noisier_kspace"] if self.model.training else data["masked_kspace"]
+        sampling_mask = data["noisier_sampling_mask"] if self.model.training else data["sampling_mask"]
+        sensitivity_map = data["sensitivity_map"]
+        scaling_factor = torch.tensor([1.0]).to(masked_kspace.device)
+        output, _ = self.model(
+            input_image=None,
+            hidden_state=None,
+            masked_kspace=masked_kspace,
+            sampling_mask=sampling_mask,
+            sensitivity_map=sensitivity_map,
+            loglikelihood_scaling=scaling_factor,
+        )
+        output_image = output[-1].permute(0, 2, 3, 1)
+
+        return output_image, None
