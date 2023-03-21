@@ -729,7 +729,7 @@ class EstimateSensitivityMapModule(DirectModule):
         super().__init__()
         self.backward_operator = backward_operator
         self.kspace_key = kspace_key
-        if type_of_map not in ["unit", "rss_estimate", "espirit"]:
+        if type_of_map not in ["unit", "rss_estimate", "espirit", "key_rss_estimate"]:
             raise ValueError(
                 f"Expected type of map to be either `unit`, `rss_estimate`, `espirit`. Got {type_of_map}."
             )
@@ -827,6 +827,12 @@ class EstimateSensitivityMapModule(DirectModule):
             acs_image_rss = acs_image_rss.unsqueeze(self.coil_dim).unsqueeze(self.complex_dim)
             # Shape (batch, coil, height, width, complex=2)
             sensitivity_map = T.safe_divide(acs_image, acs_image_rss)
+        elif self.type_of_map == "key_rss_estimate":
+            image = self.backward_operator(sample[self.kspace_key], dim=self.spatial_dims)
+            image_rss = (
+                T.root_sum_of_squares(image, dim=self.coil_dim).unsqueeze(self.coil_dim).unsqueeze(self.complex_dim)
+            )
+            sensitivity_map = T.safe_divide(image, image_rss)
         else:
             sensitivity_map = self.espirit_calibrator(sample)
 
@@ -1199,6 +1205,9 @@ class ModuleWrapper:
                         sample[k] = v[0]
 
             return sample
+
+        def __repr__(self):
+            return self._transform.__repr__()
 
     def __init__(self, module: Callable, toggle_dims: bool):
         self._module = module
@@ -1911,5 +1920,132 @@ def build_mri_transforms(
             type_reconstruction=image_recon_type,
         )
     ]
+
+    return Compose(mri_transforms)
+
+
+def build_image_transforms(
+    forward_operator: Callable,
+    backward_operator: Callable,
+    mask_func: Optional[Callable] = None,
+    crop: Optional[Union[Tuple[int, int], str]] = None,
+    crop_type: Optional[str] = "uniform",
+    image_center_crop: bool = True,
+    random_rotation: bool = False,
+    random_rotation_degrees: Optional[Sequence[int]] = (-90, 90),
+    random_rotation_probability: Optional[float] = 0.5,
+    random_flip: bool = False,
+    random_flip_type: Optional[RandomFlipType] = RandomFlipType.random,
+    random_flip_probability: Optional[float] = 0.5,
+    padding_eps: float = 0.0001,
+    estimate_body_coil_image: bool = False,
+    estimate_sensitivity_maps: bool = False,
+    sensitivity_maps_type: SensitivityMapType = SensitivityMapType.rss_estimate,
+    sensitivity_maps_gaussian: Optional[float] = None,
+    sensitivity_maps_espirit_threshold: Optional[float] = 0.05,
+    sensitivity_maps_espirit_kernel_size: Optional[int] = 6,
+    sensitivity_maps_espirit_crop: Optional[float] = 0.95,
+    sensitivity_maps_espirit_max_iters: Optional[int] = 30,
+    delete_acs_mask: bool = True,
+    delete_kspace: bool = True,
+    image_recon_type: ReconstructionType = ReconstructionType.rss,
+    pad_coils: Optional[int] = None,
+    scaling_key: TransformKey = TransformKey.masked_kspace,
+    scale_percentile: Optional[float] = 0.99,
+    use_seed: bool = True,
+) -> object:
+    mri_transforms: List[Callable] = [ToTensor()]
+    if crop:
+        mri_transforms += [
+            CropKspace(
+                crop=crop,
+                forward_operator=forward_operator,
+                backward_operator=backward_operator,
+                image_space_center_crop=image_center_crop,
+                random_crop_sampler_type=crop_type,
+                random_crop_sampler_use_seed=use_seed,
+            )
+        ]
+    if random_rotation:
+        mri_transforms += [
+            RandomRotation(
+                degrees=random_rotation_degrees,
+                p=random_rotation_probability,
+                keys_to_rotate=(TransformKey.kspace, TransformKey.sensitivity_map),
+            )
+        ]
+    if random_flip:
+        mri_transforms += [
+            RandomFlip(
+                flip=random_flip_type,
+                p=random_flip_probability,
+                keys_to_flip=(TransformKey.kspace, TransformKey.sensitivity_map),
+            )
+        ]
+    if mask_func:
+        mri_transforms += [
+            ComputeZeroPadding(KspaceKey.kspace, "padding", padding_eps),
+            ApplyZeroPadding(KspaceKey.kspace, "padding"),
+            CreateSamplingMask(
+                mask_func,
+                shape=(None if (isinstance(crop, str)) else crop),
+                use_seed=use_seed,
+                return_acs=estimate_sensitivity_maps,
+            ),
+        ]
+
+    if pad_coils:
+        mri_transforms += [PadCoilDimension(pad_coils=pad_coils, key=KspaceKey.kspace)]
+
+    if estimate_body_coil_image and mask_func is not None:
+        mri_transforms.append(EstimateBodyCoilImage(mask_func, backward_operator=backward_operator, use_seed=use_seed))
+
+    if estimate_sensitivity_maps:
+        mri_transforms += [
+            EstimateSensitivityMap(
+                kspace_key=KspaceKey.kspace,
+                backward_operator=backward_operator,
+                type_of_map=sensitivity_maps_type,
+                gaussian_sigma=sensitivity_maps_gaussian,
+                espirit_threshold=sensitivity_maps_espirit_threshold,
+                espirit_kernel_size=sensitivity_maps_espirit_kernel_size,
+                espirit_crop=sensitivity_maps_espirit_crop,
+                espirit_max_iters=sensitivity_maps_espirit_max_iters,
+            )
+        ]
+
+    if delete_acs_mask and mask_func:
+        mri_transforms += [DeleteKeys(keys=["acs_mask"])]
+
+    if mask_func:
+        mri_transforms += [
+            ApplyMask(
+                sampling_mask_key="sampling_mask",
+                input_kspace_key=KspaceKey.kspace,
+                target_kspace_key=KspaceKey.masked_kspace,
+            ),
+        ]
+
+    mri_transforms += [
+        ComputeScalingFactor(
+            normalize_key=scaling_key, percentile=scale_percentile, scaling_factor_key=TransformKey.scaling_factor
+        ),
+        Normalize(
+            scaling_factor_key=TransformKey.scaling_factor,
+            keys_to_normalize=[KspaceKey.kspace, KspaceKey.masked_kspace],
+        ),
+    ]
+
+    mri_transforms += [
+        ComputeImage(
+            kspace_key=KspaceKey.kspace,
+            target_key=TransformKey.target,
+            backward_operator=backward_operator,
+            type_reconstruction=image_recon_type,
+        )
+    ]
+
+    if delete_kspace:
+        mri_transforms += [DeleteKeys(keys=[KspaceKey.kspace])]
 
     return Compose(mri_transforms)
