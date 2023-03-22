@@ -188,17 +188,27 @@ class SSDUMRIModelEngine(SSLMRIModelEngine):
             # In SSDU training we use output kspace to compute loss
             if self.model.training:
                 output_kspace = T.apply_mask(output_kspace, data["target_sampling_mask"], return_mask=False)
+                # SENSE reconstruction
+                output_image = T.modulus(
+                    T.reduce_operator(
+                        self.backward_operator(output_kspace, dim=self._spatial_dims),
+                        data["sensitivity_map"],
+                        self._coil_dim,
+                    )
+                )
             else:
                 # Some models output images so transform them to k-space
                 if output_image is not None:
                     output_image = T.modulus(output_image)
                 else:
-                    output_image = T.root_sum_of_squares(
-                        self.backward_operator(output_kspace, dim=self._spatial_dims), self._coil_dim
+                    # SENSE reconstruction
+                    output_image = T.modulus(
+                        T.reduce_operator(
+                            self.backward_operator(output_kspace, dim=self._spatial_dims),
+                            data["sensitivity_map"],
+                            self._coil_dim,
+                        )
                     )
-            output_image = T.root_sum_of_squares(
-                self.backward_operator(output_kspace, dim=self._spatial_dims), self._coil_dim
-            )
 
             if self.model.training:
                 loss_dict = {k: torch.tensor([0.0], dtype=output_image.dtype).to(self.device) for k in loss_fns.keys()}
