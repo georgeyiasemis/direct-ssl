@@ -10,7 +10,7 @@ from direct.config.defaults import ModelConfig
 
 
 @dataclass
-class ImageDomainVisionTrasnformerConfig(ModelConfig):
+class ImageDomainVisionTransformerConfig(ModelConfig):
     use_mask: bool = True
     average_img_size: int = 320
     patch_size: int = 10

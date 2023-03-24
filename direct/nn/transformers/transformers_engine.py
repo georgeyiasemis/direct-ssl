@@ -11,7 +11,7 @@ from direct.config import BaseConfig
 from direct.nn.mri_models import MRIModelEngine
 
 
-class ImageDomainTransformerEngine(MRIModelEngine):
+class ImageDomainVisionTransformerEngine(MRIModelEngine):
     """Image Domain Transformer Engine."""
 
     def __init__(
