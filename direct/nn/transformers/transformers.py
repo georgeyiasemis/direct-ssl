@@ -35,6 +35,7 @@ class ImageDomainVisionTransformer(nn.Module):
         gpsa_interval: Tuple[int, int] = (-1, -1),
         locality_strength: float = 1.0,
         use_pos_embedding: bool = True,
+        **kwargs,
     ):
         super().__init__()
         self.transformer = VisionTransformer(
