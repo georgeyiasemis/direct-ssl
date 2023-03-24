@@ -1,12 +1,14 @@
 # coding=utf-8
 # Copyright (c) DIRECT Contributors
 
+from math import ceil, floor
 from typing import Callable, Tuple, Union
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
-from direct.data.transforms import complex_multiplication, conjugate
+from direct.data.transforms import reduce_operator
 from direct.nn.transformers.vision_transformers import VisionTransformer
 
 __all__ = ["ImageDomainVisionTransformer"]
@@ -62,29 +64,34 @@ class ImageDomainVisionTransformer(nn.Module):
         self._complex_dim = -1
         self._spatial_dims = (2, 3)
 
-    def compute_sense_init(self, kspace: torch.Tensor, sensitivity_map: torch.Tensor) -> torch.Tensor:
-        r"""Computes sense initialization :math:`x_{\text{SENSE}}`:
-        .. math::
-            x_{\text{SENSE}} = \sum_{k=1}^{n_c} {S^{k}}^* \times y^k
-        where :math:`y^k` denotes the data from coil :math:`k`.
-        Parameters
-        ----------
-        kspace: torch.Tensor
-            k-space of shape (N, coil, height, width, complex=2).
-        sensitivity_map: torch.Tensor
-            Sensitivity map of shape (N, coil, height, width, complex=2).
-        Returns
-        -------
-        input_image: torch.Tensor
-            Sense initialization :math:`x_{\text{SENSE}}`.
-        """
-        input_image = complex_multiplication(
-            conjugate(sensitivity_map),
-            self.backward_operator(kspace, dim=self._spatial_dims),
-        )
-        input_image = input_image.sum(self._coil_dim)
+    def pad(self, x):
+        _, _, h, w = x.shape
+        hp, wp = self.transformer.patch_size
+        f1 = ((wp - w % wp) % wp) / 2
+        f2 = ((hp - h % hp) % hp) / 2
+        wpad = [floor(f1), ceil(f1)]
+        hpad = [floor(f2), ceil(f2)]
+        x = F.pad(x, wpad + hpad)
 
-        return input_image
+        return x, wpad, hpad
+
+    def unpad(self, x, wpad, hpad):
+        return x[..., hpad[0] : x.shape[-2] - hpad[1], wpad[0] : x.shape[-1] - wpad[1]]
+
+    def norm(self, x):
+        mean = x.view(x.shape[0], 1, 1, -1).mean(-1, keepdim=True)
+        std = x.view(
+            x.shape[0],
+            1,
+            1,
+            -1,
+        ).std(-1, keepdim=True)
+        x = (x - mean) / std
+
+        return x, mean, std
+
+    def unnorm(self, x, mean, std):
+        return x * std + mean
 
     def forward(
         self, masked_kspace: torch.Tensor, sensitivity_map: torch.Tensor, sampling_mask: torch.Tensor = None
@@ -105,7 +112,8 @@ class ImageDomainVisionTransformer(nn.Module):
         out : torch.Tensor
             Prediction of output image of shape (N, height, width, complex=2).
         """
-        inp = self.compute_sense_init(kspace=masked_kspace, sensitivity_map=sensitivity_map)
+        inp = reduce_operator(coil_data=masked_kspace, sensitivity_map=sensitivity_map, dim=self._coil_dim)
+
         if self.use_mask and sampling_mask is not None:
             sampling_mask_inp = torch.cat(
                 [
@@ -120,5 +128,14 @@ class ImageDomainVisionTransformer(nn.Module):
             )
             inp = torch.cat([inp, sampling_mask_inp], dim=self._complex_dim)
 
-        out = self.transformer(inp.permute(0, 3, 1, 2))
+        inp = inp.permute(0, 3, 1, 2)
+
+        inp, wpad, hpad = self.pad(inp)
+        inp, mean, std = self.norm(inp)
+
+        out = self.transformer(inp)
+
+        out = self.unnorm(out, mean, std)
+        out = self.unpad(out, wpad, hpad)
+
         return out.permute(0, 2, 3, 1)

@@ -137,7 +137,7 @@ class GPSA(nn.Module):
         self.pos_proj = nn.Linear(3, num_heads)
         self.proj_drop = nn.Dropout(proj_drop)
         self.locality_strength = locality_strength
-        self.gating_param = nn.Parameter(1 * torch.ones(self.num_heads))
+        self.gating_param = nn.Parameter(torch.ones(self.num_heads))
         self.apply(_init_weights)
         if use_local_init:
             self.local_init(locality_strength=locality_strength)
@@ -490,8 +490,9 @@ class VisionTransformerBlock(nn.Module):
         grid_size : Tuple[int, int]
             The size of the grid used by the attention layer.
 
-        Returns:
-            torch.Tensor: The output tensor.
+        Returns
+        -------
+        torch.Tensor: The output tensor.
         """
         self.attn.current_grid_size = grid_size
         x = x + self.dropout_path(self.attn(self.norm1(x)))
@@ -618,17 +619,6 @@ class VisionTransformer(nn.Module):
         )
 
         self.norm = norm_layer(embedding_dim)
-
-        self.conv_out = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=self.out_channels, kernel_size=3, padding=1),
-            nn.BatchNorm2d(self.out_channels),
-            nn.Conv2d(
-                in_channels=self.out_channels,
-                out_channels=self.out_channels if out_channels else in_channels,
-                kernel_size=1,
-            ),
-        )
-
         # head
         self.feature_info = [dict(num_chs=embedding_dim, reduction=0, module="head")]
         self.head = nn.Linear(self.num_features, in_channels * self.patch_size[0] * self.patch_size[1])
@@ -684,14 +674,8 @@ class VisionTransformer(nn.Module):
         torch.Tensor
         """
         _, _, H, W = x.shape
-
-        pad_H = self.patch_size[0] - H % self.patch_size[0]
-        pad_W = self.patch_size[1] - W % self.patch_size[1]
-        x = F.pad(x, (pad_W // 2, pad_W - pad_W // 2, pad_H // 2, pad_H - pad_H // 2))
         x = self.forward_features(x)
         x = self.head(x)
-        x = self.seq2img(x, (H + pad_H, W + pad_W))
-        x = x[:, :, pad_H // 2 : -(pad_H - pad_H // 2), pad_W // 2 : -(pad_W - pad_W // 2)]
-        x = self.conv_out(x)
+        x = self.seq2img(x, (H, W))
 
         return x
