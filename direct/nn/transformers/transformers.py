@@ -112,7 +112,11 @@ class ImageDomainVisionTransformer(nn.Module):
         out : torch.Tensor
             Prediction of output image of shape (N, height, width, complex=2).
         """
-        inp = reduce_operator(coil_data=masked_kspace, sensitivity_map=sensitivity_map, dim=self._coil_dim)
+        inp = reduce_operator(
+            coil_data=self.backward_operator(masked_kspace, dim=self._spatial_dims),
+            sensitivity_map=sensitivity_map,
+            dim=self._coil_dim,
+        )
 
         if self.use_mask and sampling_mask is not None:
             sampling_mask_inp = torch.cat(
