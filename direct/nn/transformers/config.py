@@ -2,9 +2,7 @@
 # Copyright (c) DIRECT Contributors
 
 from dataclasses import dataclass
-from typing import Tuple
-
-import torch.nn as nn
+from typing import Optional, Tuple
 
 from direct.config.defaults import ModelConfig
 
@@ -19,7 +17,7 @@ class ImageDomainVisionTransformerConfig(ModelConfig):
     num_heads: int = 9
     mlp_ratio: float = 4.0
     qkv_bias: bool = False
-    qk_scale: float = None
+    qk_scale: Optional[float] = None
     drop_rate: float = 0.0
     attn_drop_rate: float = 0.0
     dropout_path_rate: float = 0.0
