@@ -80,13 +80,8 @@ class ImageDomainVisionTransformer(nn.Module):
         return x[..., hpad[0] : x.shape[-2] - hpad[1], wpad[0] : x.shape[-1] - wpad[1]]
 
     def norm(self, x):
-        mean = x.view(x.shape[0], 1, 1, -1).mean(-1, keepdim=True)
-        std = x.view(
-            x.shape[0],
-            1,
-            1,
-            -1,
-        ).std(-1, keepdim=True)
+        mean = x.reshape(x.shape[0], 1, 1, -1).mean(-1, keepdim=True)
+        std = x.reshape(x.shape[0], 1, 1, -1).std(-1, keepdim=True)
         x = (x - mean) / std
 
         return x, mean, std
