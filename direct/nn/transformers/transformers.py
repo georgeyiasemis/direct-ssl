@@ -188,6 +188,7 @@ class MRITransformer(nn.Module):
                 for _ in range(num_gradient_descent_steps)
             ]
         )
+        self.learning_rate = nn.Parameter(torch.ones(num_gradient_descent_steps))
         self.forward_operator = forward_operator
         self.backward_operator = backward_operator
         self.num_gradient_descent_steps = num_gradient_descent_steps
@@ -195,6 +196,26 @@ class MRITransformer(nn.Module):
         self._coil_dim = 1
         self._complex_dim = -1
         self._spatial_dims = (2, 3)
+
+    def _forward_operator(
+        self, image: torch.Tensor, sampling_mask: torch.Tensor, sensitivity_map: torch.Tensor
+    ) -> torch.Tensor:
+        forward = apply_mask(
+            self.forward_operator(expand_operator(image, sensitivity_map, self._coil_dim), dim=self._spatial_dims),
+            sampling_mask,
+            return_mask=False,
+        )
+        return forward
+
+    def _backward_operator(
+        self, kspace: torch.Tensor, sampling_mask: torch.Tensor, sensitivity_map: torch.Tensor
+    ) -> torch.Tensor:
+        backward = reduce_operator(
+            self.backward_operator(apply_mask(kspace, sampling_mask, return_mask=False), self._spatial_dims),
+            sensitivity_map,
+            self._coil_dim,
+        )
+        return backward
 
     def forward(
         self, masked_kspace: torch.Tensor, sensitivity_map: torch.Tensor, sampling_mask: torch.Tensor = None
@@ -215,36 +236,28 @@ class MRITransformer(nn.Module):
         out : torch.Tensor
             Prediction of output image of shape (N, height, width, complex=2).
         """
-        inp = reduce_operator(
+        x = reduce_operator(
             coil_data=self.backward_operator(masked_kspace, dim=self._spatial_dims),
             sensitivity_map=sensitivity_map,
             dim=self._coil_dim,
         )
-
-        inp = inp.permute(0, 3, 1, 2)
-
-        inp, wpad, hpad = _pad(inp, self.transformers[0].patch_size)
-        inp, mean, std = _norm(inp)
-
-        inp = inp.permute(0, 2, 3, 1)
-
         for _ in range(self.num_gradient_descent_steps):
-            inp = self.forward_operator(
-                expand_operator(inp, sensitivity_map, dim=self._coil_dim),
-                dim=self._spatial_dims,
-            )
-            inp = self.backward_operator(
-                apply_mask(inp, sampling_mask, return_mask=False),
-                dim=self._spatial_dims,
-            )
-            inp = reduce_operator(inp, sensitivity_map, dim=self._coil_dim)
-            inp += self.transformers[_](inp.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
+            x_trans, wpad, hpad = _pad(x.permute(0, 3, 1, 2), self.transformers[0].patch_size)
+            x_trans, mean, std = _norm(x_trans)
 
-        inp = inp.permute(0, 3, 1, 2)
-        out = _unnorm(inp, mean, std)
-        out = _unpad(out, wpad, hpad)
+            x_trans = x_trans + self.transformers[_](x_trans)
 
-        return out.permute(0, 2, 3, 1)
+            x_trans = _unnorm(x_trans, mean, std)
+            x_trans = _unpad(x_trans, wpad, hpad).permute(0, 2, 3, 1)
+
+            x = x - self.learning_rate[_] * (
+                self._backward_operator(
+                    self._forward_operator(x, sampling_mask, sensitivity_map), sampling_mask, sensitivity_map
+                )
+                + x_trans
+            )
+
+        return x
 
 
 class ImageDomainVisionTransformer(nn.Module):
@@ -297,30 +310,6 @@ class ImageDomainVisionTransformer(nn.Module):
         self._coil_dim = 1
         self._complex_dim = -1
         self._spatial_dims = (2, 3)
-
-    def pad(self, x):
-        _, _, h, w = x.shape
-        hp, wp = self.transformer.patch_size
-        f1 = ((wp - w % wp) % wp) / 2
-        f2 = ((hp - h % hp) % hp) / 2
-        wpad = [floor(f1), ceil(f1)]
-        hpad = [floor(f2), ceil(f2)]
-        x = F.pad(x, wpad + hpad)
-
-        return x, wpad, hpad
-
-    def unpad(self, x, wpad, hpad):
-        return x[..., hpad[0] : x.shape[-2] - hpad[1], wpad[0] : x.shape[-1] - wpad[1]]
-
-    def norm(self, x):
-        mean = x.reshape(x.shape[0], 1, 1, -1).mean(-1, keepdim=True)
-        std = x.reshape(x.shape[0], 1, 1, -1).std(-1, keepdim=True)
-        x = (x - mean) / std
-
-        return x, mean, std
-
-    def unnorm(self, x, mean, std):
-        return x * std + mean
 
     def forward(
         self, masked_kspace: torch.Tensor, sensitivity_map: torch.Tensor, sampling_mask: torch.Tensor = None
