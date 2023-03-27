@@ -252,7 +252,9 @@ class MRITransformer(nn.Module):
 
             x = x - self.learning_rate[_] * (
                 self._backward_operator(
-                    self._forward_operator(x, sampling_mask, sensitivity_map), sampling_mask, sensitivity_map
+                    self._forward_operator(x, sampling_mask, sensitivity_map) - masked_kspace,
+                    sampling_mask,
+                    sensitivity_map,
                 )
                 + x_trans
             )
