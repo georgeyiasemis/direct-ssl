@@ -1,100 +1,496 @@
 # coding=utf-8
 # Copyright (c) DIRECT Contributors
 
-from math import ceil, floor
-from typing import Callable, Tuple, Union
+from __future__ import annotations
+
+from typing import Callable, Optional
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
-from direct.data.transforms import apply_mask, expand_operator, reduce_operator
+from direct.data.transforms import apply_mask, apply_padding, expand_operator, reduce_operator
+from direct.nn.transformers.uformer import *
+from direct.nn.transformers.utils import norm, pad, pad_to_square, unnorm, unpad
 from direct.nn.transformers.vision_transformers import VisionTransformer
+from direct.types import DirectEnum
 
-__all__ = ["MRITransformer", "ImageDomainVisionTransformer"]
-
-
-def _pad(x: torch.Tensor, patch_size: Tuple[int, int]) -> Tuple[torch.Tensor, Tuple[int, int], Tuple[int, int]]:
-    """Pad the input tensor with zeros to make its spatial dimensions divisible by the patch size.
-
-    Parameters
-    ----------
-    x : torch.Tensor
-        Input tensor of shape (B, C, H, W).
-    patch_size : Tuple[int, int]
-        Patch size as a tuple of integers (patch_height, patch_width).
-
-    Returns
-    -------
-    Tuple containing the padded tensor, and the number of pixels padded in the width and height dimensions respectively.
-    """
-    _, _, h, w = x.shape
-    hp, wp = patch_size
-    f1 = ((wp - w % wp) % wp) / 2
-    f2 = ((hp - h % hp) % hp) / 2
-    wpad = (floor(f1), ceil(f1))
-    hpad = (floor(f2), ceil(f2))
-    x = F.pad(x, wpad + hpad)
-
-    return x, wpad, hpad
+__all__ = [
+    "MRITransformer",
+    "ImageDomainVisionTransformer",
+    "ImageDomainUFormer",
+    "KSpaceDomainUFormerMultiCoilInputMode",
+    "KSpaceDomainUFormer",
+]
 
 
-def _unpad(x: torch.Tensor, wpad: Tuple[int, int], hpad: Tuple[int, int]) -> torch.Tensor:
-    """Remove the padding added to the input tensor by _pad method.
+class MRIUFormer(nn.Module):
+    """A PyTorch module that implements MRI image reconstruction using an image domain UFormer."""
 
-    Parameters
-    ----------
-    x : torch.Tensor
-        Input tensor of shape (B, C, H_pad, W_pad).
-    wpad : Tuple[int, int]
-        Number of pixels padded in the width dimension as a tuple of integers (left_pad, right_pad).
-    hpad : Tuple[int, int]
-        Number of pixels padded in the height dimension as a tuple of integers (top_pad, bottom_pad).
+    def __init__(
+        self,
+        forward_operator: Callable,
+        backward_operator: Callable,
+        patch_size: int = 256,
+        embedding_dim: int = 32,
+        encoder_depths: tuple[int, ...] = (2, 2, 2, 2),
+        encoder_num_heads: tuple[int, ...] = (1, 2, 4, 8),
+        bottleneck_depth: int = 2,
+        bottleneck_num_heads: int = 16,
+        win_size: int = 8,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: Optional[float] = None,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.1,
+        patch_norm: bool = True,
+        token_projection: AttentionTokenProjectionType = AttentionTokenProjectionType.linear,
+        token_mlp: LeWinTransformerMLPTokenType = LeWinTransformerMLPTokenType.leff,
+        shift_flag: bool = True,
+        modulator: bool = False,
+        cross_modulator: bool = False,
+        **kwargs,
+    ):
+        """Inits :class:`MRIUFormer`.
 
-    Returns
-    -------
-    Tensor with the same shape as the original input tensor, but without the added padding.
-    """
-    return x[..., hpad[0] : x.shape[-2] - hpad[1], wpad[0] : x.shape[-1] - wpad[1]]
+        Parameters
+        ----------
+        forward_operator: Callable
+            Forward Operator.
+        backward_operator: Callable
+            Backward Operator.
+        patch_size : int
+            Size of the patch. Default: 256.
+        embedding_dim : int
+            Size of the feature embedding. Default: 32.
+        encoder_depths : tuple
+            Number of layers for each stage of the encoder of the U-former, from top to bottom. Default: (2, 2, 2, 2).
+        encoder_num_heads : tuple
+            Number of attention heads for each layer of the encoder of the U-former, from top to bottom.
+            Default: (1, 2, 4, 8).
+        bottleneck_depth : int
+            Default: 16.
+        bottleneck_num_heads : int
+            Default: 2.
+        win_size : int
+            Window size for the attention mechanism. Default: 8.
+        mlp_ratio : float
+            Ratio of the hidden dimension size to the embedding dimension size in the MLP layers. Default: 4.0.
+        qkv_bias : bool
+            Whether to use bias in the query, key, and value projections of the attention mechanism. Default: True.
+        qk_scale : float
+            Scale factor for the query and key projection vectors.
+            If set to None, will use the default value of 1 / sqrt(embedding_dim). Default: None.
+        drop_rate : float
+            Dropout rate for the token-level dropout layer. Default: 0.0.
+        attn_drop_rate : float
+            Dropout rate for the attention score matrix. Default: 0.0.
+        drop_path_rate : float
+            Dropout rate for the stochastic depth regularization. Default: 0.1.
+        patch_norm : bool
+            Whether to use normalization for the patch embeddings. Default: True.
+        token_projection : AttentionTokenProjectionType
+            Type of token projection. Must be one of ["linear", "conv"]. Default: AttentionTokenProjectionType.linear.
+        token_mlp : LeWinTransformerMLPTokenType
+            Type of token-level MLP. Must be one of ["leff", "mlp", "ffn"]. Default: LeWinTransformerMLPTokenType.leff.
+        shift_flag : bool
+            Whether to use shift operation in the local attention mechanism. Default: True.
+        modulator : bool
+            Whether to use a modulator in the attention mechanism. Default: False.
+        cross_modulator : bool
+            Whether to use cross-modulation in the attention mechanism. Default: False.
+        **kwargs: Other keyword arguments to pass to the parent constructor.
+        """
+        super().__init__()
+        self.forward_operator = forward_operator
+        self.backward_operator = backward_operator
+        self.uformer = UFormer(
+            patch_size=patch_size,
+            in_channels=2,
+            out_channels=2,
+            embedding_dim=embedding_dim,
+            encoder_depths=encoder_depths,
+            encoder_num_heads=encoder_num_heads,
+            bottleneck_depth=bottleneck_depth,
+            bottleneck_num_heads=bottleneck_num_heads,
+            win_size=win_size,
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+            drop_path_rate=drop_path_rate,
+            patch_norm=patch_norm,
+            token_projection=token_projection,
+            token_mlp=token_mlp,
+            shift_flag=shift_flag,
+            modulator=modulator,
+            cross_modulator=cross_modulator,
+        )
+        self.padding_factor = win_size * (2 ** len(encoder_depths))
+        self._coil_dim = 1
+        self._complex_dim = -1
+        self._spatial_dims = (2, 3)
 
 
-def _norm(x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-    """Normalize the input tensor by subtracting the mean and dividing by the standard deviation across each channel and pixel.
-
-    Parameters
-    ----------
-    x : torch.Tensor
-        Input tensor of shape (B, C, H, W).
-
-    Returns
-    -------
-    Tuple containing the normalized tensor, mean tensor and standard deviation tensor.
-    """
-    mean = x.reshape(x.shape[0], 1, 1, -1).mean(-1, keepdim=True)
-    std = x.reshape(x.shape[0], 1, 1, -1).std(-1, keepdim=True)
-    x = (x - mean) / std
-
-    return x, mean, std
+class KSpaceDomainUFormerMultiCoilInputMode(DirectEnum):
+    sense_sum = "sense_sum"
+    compute_per_coil = "compute_per_coil"
 
 
-def _unnorm(x: torch.Tensor, mean: torch.Tensor, std: torch.Tensor) -> torch.Tensor:
-    """Denormalize the input tensor by multiplying with the standard deviation and adding
-    the mean across each channel and pixel.
+class KSpaceDomainUFormer(MRIUFormer):
+    """A PyTorch module that implements MRI image reconstruction using a k-space domain UFormer."""
 
-    Parameters
-    ----------
-    x : torch.Tensor
-        Input tensor of shape (B, C, H, W).
-    mean : torch.Tensor
-        Mean tensor obtained during normalization.
-    std : torch.Tensor
-        Standard deviation tensor obtained during normalization.
+    def __init__(
+        self,
+        forward_operator: Callable,
+        backward_operator: Callable,
+        multicoil_input_mode: KSpaceDomainUFormerMultiCoilInputMode = KSpaceDomainUFormerMultiCoilInputMode.sense_sum,
+        patch_size: int = 128,
+        embedding_dim: int = 16,
+        encoder_depths: tuple[int, ...] = (2, 2, 2),
+        encoder_num_heads: tuple[int, ...] = (1, 2, 4),
+        bottleneck_depth: int = 2,
+        bottleneck_num_heads: int = 8,
+        win_size: int = 8,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: Optional[float] = None,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.1,
+        patch_norm: bool = True,
+        token_projection: AttentionTokenProjectionType = AttentionTokenProjectionType.linear,
+        token_mlp: LeWinTransformerMLPTokenType = LeWinTransformerMLPTokenType.leff,
+        shift_flag: bool = True,
+        modulator: bool = False,
+        cross_modulator: bool = False,
+        **kwargs,
+    ):
+        """Inits :class:`KSpaceDomainUFormer`.
 
-    Returns
-    -------
-    Tensor with the same shape as the original input tensor, but denormalized.
-    """
-    return x * std + mean
+        Parameters
+        ----------
+        forward_operator: Callable
+            Forward Operator.
+        backward_operator: Callable
+            Backward Operator.
+        multicoil_input_mode: KSpaceDomainUFormerMultiCoilInputMode
+            Set to "sense_sum" to aggregate all coil data, or "compute_per_coil" to pass each coil data in
+            a different pass to the same model. Default: KSpaceDomainUFormerMultiCoilInputMode.sense_sum.
+        patch_size : int
+            Size of the patch. Default: 128.
+        embedding_dim : int
+            Size of the feature embedding. Default: 16.
+        encoder_depths : tuple
+            Number of layers for each stage of the encoder of the U-former, from top to bottom. Default: (2, 2, 2).
+        encoder_num_heads : tuple
+            Number of attention heads for each layer of the encoder of the U-former, from top to bottom.
+            Default: (1, 2, 4).
+        bottleneck_depth : int
+            Default: 8.
+        bottleneck_num_heads : int
+            Default: 2.
+        win_size : int
+            Window size for the attention mechanism. Default: 8.
+        mlp_ratio : float
+            Ratio of the hidden dimension size to the embedding dimension size in the MLP layers. Default: 4.0.
+        qkv_bias : bool
+            Whether to use bias in the query, key, and value projections of the attention mechanism. Default: True.
+        qk_scale : float
+            Scale factor for the query and key projection vectors.
+            If set to None, will use the default value of 1 / sqrt(embedding_dim). Default: None.
+        drop_rate : float
+            Dropout rate for the token-level dropout layer. Default: 0.0.
+        attn_drop_rate : float
+            Dropout rate for the attention score matrix. Default: 0.0.
+        drop_path_rate : float
+            Dropout rate for the stochastic depth regularization. Default: 0.1.
+        patch_norm : bool
+            Whether to use normalization for the patch embeddings. Default: True.
+        token_projection : AttentionTokenProjectionType
+            Type of token projection. Must be one of ["linear", "conv"]. Default: AttentionTokenProjectionType.linear.
+        token_mlp : LeWinTransformerMLPTokenType
+            Type of token-level MLP. Must be one of ["leff", "mlp", "ffn"]. Default: LeWinTransformerMLPTokenType.leff.
+        shift_flag : bool
+            Whether to use shift operation in the local attention mechanism. Default: True.
+        modulator : bool
+            Whether to use a modulator in the attention mechanism. Default: False.
+        cross_modulator : bool
+            Whether to use cross-modulation in the attention mechanism. Default: False.
+        **kwargs: Other keyword arguments to pass to the parent constructor.
+        """
+        super().__init__(
+            forward_operator=forward_operator,
+            backward_operator=backward_operator,
+            patch_size=patch_size,
+            in_channels=2,
+            out_channels=2,
+            embedding_dim=embedding_dim,
+            encoder_depths=encoder_depths,
+            encoder_num_heads=encoder_num_heads,
+            bottleneck_depth=bottleneck_depth,
+            bottleneck_num_heads=bottleneck_num_heads,
+            win_size=win_size,
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+            drop_path_rate=drop_path_rate,
+            patch_norm=patch_norm,
+            token_projection=token_projection,
+            token_mlp=token_mlp,
+            shift_flag=shift_flag,
+            modulator=modulator,
+            cross_modulator=cross_modulator,
+        )
+
+        self.multicoil_input_mode = multicoil_input_mode
+
+    def forward(
+        self,
+        masked_kspace: torch.Tensor,
+        sensitivity_map: torch.Tensor,
+        sampling_mask: Optional[torch.Tensor] = None,
+        padding: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        r"""Performs forward pass of :class:`KSpaceDomainUFormer`.
+
+        Parameters
+        ----------
+        masked_kspace : torch.Tensor
+            Masked k-space of shape (N, coil, height, width, complex=2).
+        sensitivity_map : torch.Tensor
+            Coil sensitivities of shape (N, coil, height, width, complex=2).
+        sampling_mask : torch.Tensor, optional
+            Sampling mask of shape (N, 1, height, width, 1). If not None, it will use
+            :math:`y_{inp} + (1-M) * f_\theta(y_{inp})` as output, else :math:`f_\theta(y_{inp})`.
+        padding : torch.Tensor, optional
+            Zero-padding (i.e. not sampled locations) that may be present in original k-space
+            of shape (N, 1, height, width, 1). If not None, padding will be applied to output.
+
+        Returns
+        -------
+        out : torch.Tensor
+            Prediction of output image of shape (N, height, width, complex=2).
+        """
+
+        # Pad to square in image domain
+        inp = self.backward_operator(masked_kspace, dim=self._spatial_dims).permute(0, 1, 4, 2, 3)
+        inp, _, wpad, hpad = pad_to_square(inp, self.padding_factor)
+        padded_sensitivity_map, _, _, _ = pad_to_square(sensitivity_map.permute(0, 1, 4, 2, 3), self.padding_factor)
+        padded_sensitivity_map = padded_sensitivity_map.permute(0, 1, 3, 4, 2)
+
+        # Project back to k-space
+        inp = self.forward_operator(inp.permute(0, 1, 3, 4, 2).contiguous(), dim=self._spatial_dims)
+        if self.multicoil_input_mode == "sense_sum":
+            # Construct SENSE reconstruction
+            # \sum_{k=1}^{n_c} S^k * \mathcal{F}^{-1} (y^k)
+            inp = reduce_operator(
+                coil_data=self.backward_operator(inp, dim=self._spatial_dims),
+                sensitivity_map=padded_sensitivity_map,
+                dim=self._coil_dim,
+            )
+            # Project the SENSE reconstruction to k-space domain and use as input to model
+            inp = self.forward_operator(inp, dim=[d - 1 for d in self._spatial_dims])
+            inp = inp.permute(0, 3, 1, 2)
+
+            inp, mean, std = norm(inp)
+
+            out = self.uformer(inp)
+
+            out = unnorm(out, mean, std)
+
+            # Project k-space to image domain and unpad
+            out = self.backward_operator(out.permute(0, 2, 3, 1), dim=[d - 1 for d in self._spatial_dims])
+        else:
+            # Pass each coil k-space to model
+            out = []
+            for coil_idx in range(masked_kspace.shape[self._coil_dim]):
+                coil_data = inp[:, coil_idx].permute(0, 3, 1, 2)
+
+                coil_data, mean, std = norm(coil_data)
+
+                coil_data = self.uformer(coil_data)
+
+                coil_data = unnorm(coil_data, mean, std).permute(0, 2, 3, 1)
+
+                out.append(coil_data)
+            out = torch.stack(out, dim=self._coil_dim)
+
+            out = reduce_operator(
+                coil_data=self.backward_operator(out, dim=self._spatial_dims),
+                sensitivity_map=padded_sensitivity_map,
+                dim=self._coil_dim,
+            )
+        out = unpad(out.permute(0, 3, 1, 2), wpad, hpad).permute(0, 2, 3, 1)
+
+        out = self.forward_operator(expand_operator(out, sensitivity_map, self._coil_dim), dim=self._spatial_dims)
+        if sampling_mask is not None:
+            out = masked_kspace + apply_mask(out, ~sampling_mask, return_mask=False)
+        if padding is not None:
+            out = apply_padding(out, padding)
+        return out
+
+
+class ImageDomainUFormer(MRIUFormer):
+    """A PyTorch module that implements MRI image reconstruction using an image domain UFormer."""
+
+    def __init__(
+        self,
+        forward_operator: Callable,
+        backward_operator: Callable,
+        patch_size: int = 256,
+        embedding_dim: int = 32,
+        encoder_depths: tuple[int, ...] = (2, 2, 2, 2),
+        encoder_num_heads: tuple[int, ...] = (1, 2, 4, 8),
+        bottleneck_depth: int = 2,
+        bottleneck_num_heads: int = 16,
+        win_size: int = 8,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: Optional[float] = None,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.1,
+        patch_norm: bool = True,
+        token_projection: AttentionTokenProjectionType = AttentionTokenProjectionType.linear,
+        token_mlp: LeWinTransformerMLPTokenType = LeWinTransformerMLPTokenType.leff,
+        shift_flag: bool = True,
+        modulator: bool = False,
+        cross_modulator: bool = False,
+        **kwargs,
+    ):
+        """Inits :class:`ImageDomainUFormer`.
+
+        Parameters
+        ----------
+        forward_operator: Callable
+            Forward Operator.
+        backward_operator: Callable
+            Backward Operator.
+        patch_size : int
+            Size of the patch. Default: 256.
+        embedding_dim : int
+            Size of the feature embedding. Default: 32.
+        encoder_depths : tuple
+            Number of layers for each stage of the encoder of the U-former, from top to bottom. Default: (2, 2, 2, 2).
+        encoder_num_heads : tuple
+            Number of attention heads for each layer of the encoder of the U-former, from top to bottom.
+            Default: (1, 2, 4, 8).
+        bottleneck_depth : int
+            Default: 16.
+        bottleneck_num_heads : int
+            Default: 2.
+        win_size : int
+            Window size for the attention mechanism. Default: 8.
+        mlp_ratio : float
+            Ratio of the hidden dimension size to the embedding dimension size in the MLP layers. Default: 4.0.
+        qkv_bias : bool
+            Whether to use bias in the query, key, and value projections of the attention mechanism. Default: True.
+        qk_scale : float
+            Scale factor for the query and key projection vectors.
+            If set to None, will use the default value of 1 / sqrt(embedding_dim). Default: None.
+        drop_rate : float
+            Dropout rate for the token-level dropout layer. Default: 0.0.
+        attn_drop_rate : float
+            Dropout rate for the attention score matrix. Default: 0.0.
+        drop_path_rate : float
+            Dropout rate for the stochastic depth regularization. Default: 0.1.
+        patch_norm : bool
+            Whether to use normalization for the patch embeddings. Default: True.
+        token_projection : AttentionTokenProjectionType
+            Type of token projection. Must be one of ["linear", "conv"]. Default: AttentionTokenProjectionType.linear.
+        token_mlp : LeWinTransformerMLPTokenType
+            Type of token-level MLP. Must be one of ["leff", "mlp", "ffn"]. Default: LeWinTransformerMLPTokenType.leff.
+        shift_flag : bool
+            Whether to use shift operation in the local attention mechanism. Default: True.
+        modulator : bool
+            Whether to use a modulator in the attention mechanism. Default: False.
+        cross_modulator : bool
+            Whether to use cross-modulation in the attention mechanism. Default: False.
+        **kwargs: Other keyword arguments to pass to the parent constructor.
+        """
+        super().__init__(
+            forward_operator=forward_operator,
+            backward_operator=backward_operator,
+            patch_size=patch_size,
+            in_channels=2,
+            out_channels=2,
+            embedding_dim=embedding_dim,
+            encoder_depths=encoder_depths,
+            encoder_num_heads=encoder_num_heads,
+            bottleneck_depth=bottleneck_depth,
+            bottleneck_num_heads=bottleneck_num_heads,
+            win_size=win_size,
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+            drop_path_rate=drop_path_rate,
+            patch_norm=patch_norm,
+            token_projection=token_projection,
+            token_mlp=token_mlp,
+            shift_flag=shift_flag,
+            modulator=modulator,
+            cross_modulator=cross_modulator,
+        )
+
+    def forward(
+        self,
+        masked_kspace: torch.Tensor,
+        sensitivity_map: torch.Tensor,
+        sampling_mask: Optional[torch.Tensor] = None,
+        padding: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        """Performs forward pass of :class:`ImageDomainUFormer`.
+
+        Parameters
+        ----------
+        masked_kspace: torch.Tensor
+            Masked k-space of shape (N, coil, height, width, complex=2).
+        sensitivity_map: torch.Tensor
+            Coil sensitivities of shape (N, coil, height, width, complex=2).
+        sampling_mask : torch.Tensor, optional
+            Sampling mask of shape (N, 1, height, width, 1). If not None, it will use
+            :math:`y_{inp} + (1-M) * f_\theta(y_{inp})` as output, else :math:`f_\theta(y_{inp})`.
+        padding : torch.Tensor, optional
+            Zero-padding (i.e. not sampled locations) that may be present in original k-space
+            of shape (N, 1, height, width, 1). If not None, padding will be applied to output.
+
+        Returns
+        -------
+        out : torch.Tensor
+            Prediction of output image of shape (N, height, width, complex=2).
+        """
+        inp = reduce_operator(
+            coil_data=self.backward_operator(masked_kspace, dim=self._spatial_dims),
+            sensitivity_map=sensitivity_map,
+            dim=self._coil_dim,
+        )
+        inp = inp.permute(0, 3, 1, 2)
+
+        inp, padding_mask, wpad, hpad = pad_to_square(inp, factor=self.padding_factor)
+        inp, mean, std = norm(inp)
+
+        out = self.uformer(inp, padding_mask)
+
+        out = unnorm(out, mean, std)
+        out = unpad(out, wpad, hpad).permute(0, 2, 3, 1)
+
+        out = self.forward_operator(
+            expand_operator(out, sensitivity_map, dim=self._coil_dim),
+            dim=self._spatial_dims,
+        )
+
+        if sampling_mask is not None:
+            out = masked_kspace + apply_mask(out, ~sampling_mask, return_mask=False)
+        if padding is not None:
+            out = apply_padding(out, padding)
+
+        return out
 
 
 class MRITransformer(nn.Module):
@@ -105,8 +501,8 @@ class MRITransformer(nn.Module):
         forward_operator: Callable,
         backward_operator: Callable,
         num_gradient_descent_steps: int,
-        average_img_size: Union[int, Tuple[int, int]] = 320,
-        patch_size: Union[int, Tuple[int, int]] = 10,
+        average_img_size: int | tuple[int, int] = 320,
+        patch_size: int | tuple[int, int] = 10,
         embedding_dim: int = 64,
         depth: int = 8,
         num_heads: int = 9,
@@ -117,7 +513,7 @@ class MRITransformer(nn.Module):
         attn_drop_rate: float = 0.0,
         dropout_path_rate: float = 0.0,
         norm_layer: nn.Module = nn.LayerNorm,
-        gpsa_interval: Tuple[int, int] = (-1, -1),
+        gpsa_interval: tuple[int, int] = (-1, -1),
         locality_strength: float = 1.0,
         use_pos_embedding: bool = True,
         **kwargs,
@@ -132,9 +528,9 @@ class MRITransformer(nn.Module):
             Backward operator function.
         num_gradient_descent_steps : int
             Number of gradient descent steps to perform.
-        average_img_size : int or Tuple[int, int], optional
+        average_img_size : int or tuple[int, int], optional
             Size to which the input image is rescaled before processing.
-        patch_size : int or Tuple[int, int], optional
+        patch_size : int or tuple[int, int], optional
             Patch size used in VisionTransformer.
         embedding_dim : int, optional
             The number of embedding dimensions in the VisionTransformer.
@@ -156,7 +552,7 @@ class MRITransformer(nn.Module):
             Dropout probability for the intermediate skip connections in the VisionTransformer.
         norm_layer : nn.Module, optional
             Normalization layer used in the VisionTransformer.
-        gpsa_interval : Tuple[int, int], optional
+        gpsa_interval : tuple[int, int], optional
             Interval for performing Generalized Positional Self-Attention (GPSA) in the VisionTransformer.
         locality_strength : float, optional
             The strength of locality in the GPSA in the VisionTransformer.
@@ -242,13 +638,13 @@ class MRITransformer(nn.Module):
             dim=self._coil_dim,
         )
         for _ in range(self.num_gradient_descent_steps):
-            x_trans, wpad, hpad = _pad(x.permute(0, 3, 1, 2), self.transformers[0].patch_size)
-            x_trans, mean, std = _norm(x_trans)
+            x_trans, wpad, hpad = pad(x.permute(0, 3, 1, 2), self.transformers[0].patch_size)
+            x_trans, mean, std = norm(x_trans)
 
             x_trans = x_trans + self.transformers[_](x_trans)
 
-            x_trans = _unnorm(x_trans, mean, std)
-            x_trans = _unpad(x_trans, wpad, hpad).permute(0, 2, 3, 1)
+            x_trans = unnorm(x_trans, mean, std)
+            x_trans = unpad(x_trans, wpad, hpad).permute(0, 2, 3, 1)
 
             x = x - self.learning_rate[_] * (
                 self._backward_operator(
@@ -268,8 +664,8 @@ class ImageDomainVisionTransformer(nn.Module):
         forward_operator: Callable,
         backward_operator: Callable,
         use_mask: bool = True,
-        average_img_size: Union[int, Tuple[int, int]] = 320,
-        patch_size: Union[int, Tuple[int, int]] = 10,
+        average_img_size: int | tuple[int, int] = 320,
+        patch_size: int | tuple[int, int] = 10,
         embedding_dim: int = 64,
         depth: int = 8,
         num_heads: int = 9,
@@ -280,7 +676,7 @@ class ImageDomainVisionTransformer(nn.Module):
         attn_drop_rate: float = 0.0,
         dropout_path_rate: float = 0.0,
         norm_layer: nn.Module = nn.LayerNorm,
-        gpsa_interval: Tuple[int, int] = (-1, -1),
+        gpsa_interval: tuple[int, int] = (-1, -1),
         locality_strength: float = 1.0,
         use_pos_embedding: bool = True,
         **kwargs,
@@ -354,12 +750,12 @@ class ImageDomainVisionTransformer(nn.Module):
 
         inp = inp.permute(0, 3, 1, 2)
 
-        inp, wpad, hpad = _pad(inp, self.transformer.patch_size)
-        inp, mean, std = _norm(inp)
+        inp, wpad, hpad = pad(inp, self.transformer.patch_size)
+        inp, mean, std = norm(inp)
 
         out = self.transformer(inp)
 
-        out = _unnorm(out, mean, std)
-        out = _unpad(out, wpad, hpad)
+        out = unnorm(out, mean, std)
+        out = unpad(out, wpad, hpad)
 
         return out.permute(0, 2, 3, 1)

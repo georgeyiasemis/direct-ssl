@@ -12,25 +12,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 
+from direct.nn.transformers.utils import DropoutPath, init_weights
+
 __all__ = ["VisionTransformer"]
-
-
-def _init_weights(m: nn.Module) -> None:
-    """Initializes the weights of the network using a truncated normal distribution.
-
-    Parameters
-    ----------
-    m : nn.Module
-        A module of the network whose weights need to be initialized.
-    """
-
-    if isinstance(m, nn.Linear):
-        init.trunc_normal_(m.weight, std=0.02)
-        if isinstance(m, nn.Linear) and m.bias is not None:
-            init.constant_(m.bias, 0)
-    elif isinstance(m, nn.LayerNorm):
-        init.constant_(m.bias, 0)
-        init.constant_(m.weight, 1.0)
 
 
 class MLP(nn.Module):
@@ -60,7 +44,7 @@ class MLP(nn.Module):
         self.act = act_layer()
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
-        self.apply(_init_weights)
+        self.apply(init_weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass of :class:`MLP`.
@@ -138,7 +122,7 @@ class GPSA(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
         self.locality_strength = locality_strength
         self.gating_param = nn.Parameter(torch.ones(self.num_heads))
-        self.apply(_init_weights)
+        self.apply(init_weights)
         if use_local_init:
             self.local_init(locality_strength=locality_strength)
         self.current_grid_size = grid_size
@@ -305,7 +289,7 @@ class MHSA(nn.Module):
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
-        self.apply(_init_weights)
+        self.apply(init_weights)
         self.current_grid_size = grid_size
 
     def get_attention_map(self, x, return_map=False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
@@ -368,42 +352,6 @@ class MHSA(nn.Module):
         x = self.proj_drop(x)
 
         return x
-
-
-class DropoutPath(nn.Module):
-    """Drop paths (Stochastic Depth) per sample (when applied in main path of residual blocks)."""
-
-    def __init__(self, drop_prob: float = 0.0, scale_by_keep: bool = True):
-        """Inits :class:`DropoutPath`.
-
-        Parameters
-        ----------
-        drop_prob : float
-            Probability of dropping a residual connection. Default: 0.0.
-        scale_by_keep : bool
-            Whether to scale the remaining activations by 1 / (1 - drop_prob) to maintain the expected value of
-            the activations. Default: True.
-        """
-        super(DropoutPath, self).__init__()
-        self.drop_prob = drop_prob
-        self.scale_by_keep = scale_by_keep
-
-    @staticmethod
-    def _dropout_path(x, drop_prob: float = 0.0, training: bool = False, scale_by_keep: bool = True):
-        if drop_prob == 0.0 or not training:
-            return x
-        keep_prob = 1 - drop_prob
-        shape = (x.shape[0],) + (1,) * (x.ndim - 1)  # work with diff dim tensors, not just 2D ConvNets
-        random_tensor = x.new_empty(shape).bernoulli_(keep_prob)
-        if keep_prob > 0.0 and scale_by_keep:
-            random_tensor.div_(keep_prob)
-        return x * random_tensor
-
-    def forward(self, x):
-        return self._dropout_path(x, self.drop_prob, self.training, self.scale_by_keep)
-
-    def extra_repr(self):
-        return f"dropout_prob={round(self.drop_prob, 3):0.3f}"
 
 
 class VisionTransformerBlock(nn.Module):
@@ -518,7 +466,7 @@ class PatchEmbedding(nn.Module):
         """
         super().__init__()
         self.proj = nn.Conv2d(in_channels, embedding_dim, kernel_size=patch_size, stride=patch_size)
-        self.apply(_init_weights)
+        self.apply(init_weights)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass of :class:`PatchEmbedding`.
@@ -623,7 +571,7 @@ class VisionTransformer(nn.Module):
         self.feature_info = [dict(num_chs=embedding_dim, reduction=0, module="head")]
         self.head = nn.Linear(self.num_features, in_channels * self.patch_size[0] * self.patch_size[1])
 
-        self.head.apply(_init_weights)
+        self.head.apply(init_weights)
 
     def seq2img(self, x: torch.Tensor, img_size: Tuple[int, ...]):
         x = x.view(x.shape[0], x.shape[1], self.in_channels, self.patch_size[0], self.patch_size[1])
