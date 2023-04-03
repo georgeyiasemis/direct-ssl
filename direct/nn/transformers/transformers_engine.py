@@ -44,7 +44,7 @@ class MRIUFormerEngine(MRIModelEngine):
         return output_image, output_kspace
 
 
-class ImageDomainUFormer(MRIUFormerEngine):
+class ImageDomainUFormerEngine(MRIUFormerEngine):
     def __init__(
         self,
         cfg: BaseConfig,
@@ -67,7 +67,7 @@ class ImageDomainUFormer(MRIUFormerEngine):
         )
 
 
-class KSpaceDomainUFormer(MRIUFormerEngine):
+class KSpaceDomainUFormerEngine(MRIUFormerEngine):
     def __init__(
         self,
         cfg: BaseConfig,
