@@ -163,6 +163,8 @@ class VariationalUFormer(nn.Module):
         self.blocks = nn.ModuleList(
             [
                 VariationalUFormerBlock(
+                    forward_operator=forward_operator,
+                    backward_operator=backward_operator,
                     patch_size=patch_size,
                     embedding_dim=embedding_dim,
                     encoder_depths=encoder_depths,
