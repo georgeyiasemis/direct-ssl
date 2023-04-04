@@ -49,6 +49,7 @@ class VariationalUFormerBlock(nn.Module):
         modulator: bool = False,
         cross_modulator: bool = False,
     ):
+        super().__init__()
         self.forward_operator = forward_operator
         self.backward_operator = backward_operator
 
@@ -157,6 +158,7 @@ class VariationalUFormer(nn.Module):
         cross_modulator: bool = False,
         **kwargs,
     ):
+        super().__init__()
         self.forward_operator = forward_operator
         self.backward_operator = backward_operator
 
