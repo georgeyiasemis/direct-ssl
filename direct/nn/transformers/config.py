@@ -8,6 +8,30 @@ from direct.config.defaults import ModelConfig
 
 
 @dataclass
+class VariationalUFormerConfig(ModelConfig):
+    num_steps: int = 5
+    patch_size: int = 128
+    embedding_dim: int = 16
+    encoder_depths: tuple[int, ...] = (2, 2, 2)
+    encoder_num_heads: tuple[int, ...] = (1, 2, 4)
+    bottleneck_depth: int = 2
+    bottleneck_num_heads: int = 8
+    win_size: int = 8
+    mlp_ratio: float = 4.0
+    qkv_bias: bool = True
+    qk_scale: Optional[float] = None
+    drop_rate: float = 0.0
+    attn_drop_rate: float = 0.0
+    drop_path_rate: float = 0.1
+    patch_norm: bool = True
+    token_projection: str = "linear"
+    token_mlp: str = "leff"
+    shift_flag: bool = True
+    modulator: bool = False
+    cross_modulator: bool = False
+
+
+@dataclass
 class MRIUFormerConfig(ModelConfig):
     patch_size: int = 128
     embedding_dim: int = 16

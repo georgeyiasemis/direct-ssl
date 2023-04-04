@@ -20,7 +20,196 @@ __all__ = [
     "ImageDomainUFormer",
     "KSpaceDomainUFormerMultiCoilInputMode",
     "KSpaceDomainUFormer",
+    "VariationalUFormer",
 ]
+
+
+class VariationalUFormerBlock(nn.Module):
+    def __init__(
+        self,
+        forward_operator: Callable,
+        backward_operator: Callable,
+        patch_size: int = 256,
+        embedding_dim: int = 32,
+        encoder_depths: tuple[int, ...] = (2, 2, 2, 2),
+        encoder_num_heads: tuple[int, ...] = (1, 2, 4, 8),
+        bottleneck_depth: int = 2,
+        bottleneck_num_heads: int = 16,
+        win_size: int = 8,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: Optional[float] = None,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.1,
+        patch_norm: bool = True,
+        token_projection: AttentionTokenProjectionType = AttentionTokenProjectionType.linear,
+        token_mlp: LeWinTransformerMLPTokenType = LeWinTransformerMLPTokenType.leff,
+        shift_flag: bool = True,
+        modulator: bool = False,
+        cross_modulator: bool = False,
+    ):
+        self.forward_operator = forward_operator
+        self.backward_operator = backward_operator
+
+        self.lr = nn.Parameter(torch.tensor([1.0]))
+
+        self.uformer = UFormer(
+            patch_size=patch_size,
+            in_channels=2,
+            out_channels=2,
+            embedding_dim=embedding_dim,
+            encoder_depths=encoder_depths,
+            encoder_num_heads=encoder_num_heads,
+            bottleneck_depth=bottleneck_depth,
+            bottleneck_num_heads=bottleneck_num_heads,
+            win_size=win_size,
+            mlp_ratio=mlp_ratio,
+            qkv_bias=qkv_bias,
+            qk_scale=qk_scale,
+            drop_rate=drop_rate,
+            attn_drop_rate=attn_drop_rate,
+            drop_path_rate=drop_path_rate,
+            patch_norm=patch_norm,
+            token_projection=token_projection,
+            token_mlp=token_mlp,
+            shift_flag=shift_flag,
+            modulator=modulator,
+            cross_modulator=cross_modulator,
+        )
+        self.padding_factor = win_size * (2 ** len(encoder_depths))
+
+        self._coil_dim = 1
+        self._complex_dim = -1
+        self._spatial_dims = (2, 3)
+
+    def forward(
+        self,
+        current_kspace: torch.Tensor,
+        masked_kspace: torch.Tensor,
+        sampling_mask: torch.Tensor,
+        sensitivity_map: torch.Tensor,
+    ) -> torch.Tensor:
+        """Performs the forward pass of :class:`VariationalUFormerBlock`.
+
+        Parameters
+        ----------
+        current_kspace: torch.Tensor
+            Current k-space prediction of shape (N, coil, height, width, complex=2).
+        masked_kspace: torch.Tensor
+            Masked k-space of shape (N, coil, height, width, complex=2).
+        sampling_mask: torch.Tensor
+            Sampling mask of shape (N, 1, height, width, 1).
+        sensitivity_map: torch.Tensor
+            Sensitivity map of shape (N, coil, height, width, complex=2).
+
+        Returns
+        -------
+        torch.Tensor
+            Next k-space prediction of shape (N, coil, height, width, complex=2).
+        """
+        kspace_error = apply_mask(current_kspace - masked_kspace, sampling_mask, return_mask=False)
+
+        regularization_term = reduce_operator(
+            self.backward_operator(current_kspace, dim=self._spatial_dims), sensitivity_map, dim=self._coil_dim
+        ).permute(0, 3, 1, 2)
+
+        regularization_term, _, wpad, hpad = pad_to_square(regularization_term, self.padding_factor)
+        regularization_term, mean, std = norm(regularization_term)
+
+        regularization_term = self.uformer(regularization_term)
+
+        regularization_term = unnorm(regularization_term, mean, std)
+        regularization_term = unpad(regularization_term, wpad, hpad).permute(0, 2, 3, 1)
+
+        regularization_term = self.forward_operator(
+            expand_operator(regularization_term, sensitivity_map, dim=self._coil_dim), dim=self._spatial_dims
+        )
+
+        return current_kspace - self.lr * kspace_error + regularization_term
+
+
+class VariationalUFormer(nn.Module):
+    def __init__(
+        self,
+        forward_operator: Callable,
+        backward_operator: Callable,
+        num_steps: int = 8,
+        no_weight_sharing: bool = True,
+        patch_size: int = 256,
+        embedding_dim: int = 32,
+        encoder_depths: tuple[int, ...] = (2, 2, 2, 2),
+        encoder_num_heads: tuple[int, ...] = (1, 2, 4, 8),
+        bottleneck_depth: int = 2,
+        bottleneck_num_heads: int = 16,
+        win_size: int = 8,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: Optional[float] = None,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.1,
+        patch_norm: bool = True,
+        token_projection: AttentionTokenProjectionType = AttentionTokenProjectionType.linear,
+        token_mlp: LeWinTransformerMLPTokenType = LeWinTransformerMLPTokenType.leff,
+        shift_flag: bool = True,
+        modulator: bool = False,
+        cross_modulator: bool = False,
+        **kwargs,
+    ):
+        self.forward_operator = forward_operator
+        self.backward_operator = backward_operator
+
+        self.blocks = nn.ModuleList(
+            [
+                VariationalUFormerBlock(
+                    patch_size=patch_size,
+                    embedding_dim=embedding_dim,
+                    encoder_depths=encoder_depths,
+                    encoder_num_heads=encoder_num_heads,
+                    bottleneck_depth=bottleneck_depth,
+                    bottleneck_num_heads=bottleneck_num_heads,
+                    win_size=win_size,
+                    mlp_ratio=mlp_ratio,
+                    qkv_bias=qkv_bias,
+                    qk_scale=qk_scale,
+                    drop_rate=drop_rate,
+                    attn_drop_rate=attn_drop_rate,
+                    drop_path_rate=drop_path_rate,
+                    patch_norm=patch_norm,
+                    token_projection=token_projection,
+                    token_mlp=token_mlp,
+                    shift_flag=shift_flag,
+                    modulator=modulator,
+                    cross_modulator=cross_modulator,
+                )
+                for _ in range((num_steps if no_weight_sharing else 1))
+            ]
+        )
+        self.num_steps = num_steps
+        self.no_weight_sharing = no_weight_sharing
+
+        self.padding_factor = win_size * (2 ** len(encoder_depths))
+        self._coil_dim = 1
+        self._complex_dim = -1
+        self._spatial_dims = (2, 3)
+
+    def forward(
+        self,
+        masked_kspace: torch.Tensor,
+        sensitivity_map: torch.Tensor,
+        sampling_mask: torch.Tensor,
+        padding: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        kspace_prediction = masked_kspace.clone()
+        for step_idx in range(self.num_steps):
+            kspace_prediction = self.blocks[step_idx if self.no_weight_sharing else 0](
+                kspace_prediction, masked_kspace, sampling_mask, sensitivity_map
+            )
+        kspace_prediction = masked_kspace + apply_mask(kspace_prediction, ~sampling_mask, return_mask=False)
+        if padding is not None:
+            kspace_prediction = apply_padding(kspace_prediction, padding)
+        return kspace_prediction
 
 
 class MRIUFormer(nn.Module):

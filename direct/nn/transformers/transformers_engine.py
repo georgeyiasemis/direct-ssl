@@ -11,6 +11,39 @@ from direct.config import BaseConfig
 from direct.nn.mri_models import MRIModelEngine
 
 
+class VariationalUFormerEngine(MRIModelEngine):
+    def __init__(
+        self,
+        cfg: BaseConfig,
+        model: nn.Module,
+        device: str,
+        forward_operator: Optional[Callable] = None,
+        backward_operator: Optional[Callable] = None,
+        mixed_precision: bool = False,
+        **models: nn.Module,
+    ):
+        """Inits :class:`VariationalUFormerEngine."""
+        super().__init__(
+            cfg,
+            model,
+            device,
+            forward_operator=forward_operator,
+            backward_operator=backward_operator,
+            mixed_precision=mixed_precision,
+            **models,
+        )
+
+    def forward_function(self, data: Dict[str, Any]) -> Tuple[torch.Tensor, torch.Tensor]:
+        output_kspace = self.model(
+            masked_kspace=data["masked_kspace"],
+            sampling_mask=data["sampling_mask"],
+            sensitivity_map=data["sensitivity_map"],
+            padding=data.get("padding", None),
+        )
+        output_image = T.root_sum_of_squares(output_kspace, dim=self._coil_dim)
+        return output_image, output_kspace
+
+
 class MRIUFormerEngine(MRIModelEngine):
     def __init__(
         self,
