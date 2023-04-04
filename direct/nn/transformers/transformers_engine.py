@@ -40,7 +40,9 @@ class VariationalUFormerEngine(MRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
             padding=data.get("padding", None),
         )
-        output_image = T.root_sum_of_squares(output_kspace, dim=self._coil_dim)
+        output_image = T.root_sum_of_squares(
+            self.backward_operator(output_kspace, dim=self._spatial_dims), dim=self._coil_dim
+        )
         return output_image, output_kspace
 
 
@@ -73,7 +75,9 @@ class MRIUFormerEngine(MRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
             padding=data.get("padding", None),
         )
-        output_image = T.root_sum_of_squares(output_kspace, dim=self._coil_dim)
+        output_image = T.root_sum_of_squares(
+            self.backward_operator(output_kspace, dim=self._spatial_dims), dim=self._coil_dim
+        )
         return output_image, output_kspace
 
 
