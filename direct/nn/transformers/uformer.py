@@ -1609,9 +1609,9 @@ class UFormer(nn.Module):
                 f"The number of heads for each layer should be the same as the number of layers. "
                 f"Got {len(encoder_num_heads)} for {len(encoder_depths)} layers."
             )
-        if patch_size < (len(encoder_depths) ** 2 * win_size):
+        if patch_size < (2 ** len(encoder_depths) * win_size):
             raise ValueError(
-                f"Patch size must be greater or equal than number of scales x window size."
+                f"Patch size must be greater or equal than 2 ** number of scales * window size."
                 f" Received: patch_size={patch_size}, number of scales=={len(encoder_depths)},"
                 f" and window_size={win_size}."
             )
