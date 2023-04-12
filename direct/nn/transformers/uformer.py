@@ -12,10 +12,10 @@ import torch.nn.functional as F
 from einops import rearrange, repeat
 from torch.nn.init import trunc_normal_
 
-from direct.nn.transformers.utils import DropoutPath, init_weights
+from direct.nn.transformers.utils import DropoutPath, init_weights, norm, pad_to_square, unnorm, unpad
 from direct.types import DirectEnum
 
-__all__ = ["AttentionTokenProjectionType", "LeWinTransformerMLPTokenType", "UFormer"]
+__all__ = ["AttentionTokenProjectionType", "LeWinTransformerMLPTokenType", "UFormer", "UFormerModel"]
 
 
 class ECALayer1d(nn.Module):
@@ -1813,3 +1813,142 @@ class UFormer(nn.Module):
         # Output Projection
         flops += self.output_proj.flops(self.reso, self.reso)
         return flops
+
+
+class UFormerModel(nn.Module):
+    """U-Former model."""
+
+    def __init__(
+        self,
+        patch_size: int = 256,
+        in_channels: int = 2,
+        out_channels: Optional[int] = None,
+        embedding_dim: int = 32,
+        encoder_depths: tuple[int, ...] = (2, 2, 2, 2),
+        encoder_num_heads: tuple[int, ...] = (1, 2, 4, 8),
+        bottleneck_depth: int = 2,
+        bottleneck_num_heads: int = 16,
+        win_size: int = 8,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = True,
+        qk_scale: Optional[float] = None,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+        drop_path_rate: float = 0.1,
+        patch_norm: bool = True,
+        token_projection: AttentionTokenProjectionType = AttentionTokenProjectionType.linear,
+        token_mlp: LeWinTransformerMLPTokenType = LeWinTransformerMLPTokenType.leff,
+        shift_flag: bool = True,
+        modulator: bool = False,
+        cross_modulator: bool = False,
+        normalized: bool = True,
+    ):
+        """Inits :class:`UFormer`.
+
+        Parameters
+        ----------
+        patch_size : int
+            Size of the patch. Default: 256.
+        in_channels : int
+            Number of input channels. Default: 2.
+        out_channels : int, optional
+            Number of output channels. Default: None.
+        embedding_dim : int
+            Size of the feature embedding. Default: 32.
+        encoder_depths : tuple
+            Number of layers for each stage of the encoder of the U-former, from top to bottom. Default: (2, 2, 2, 2).
+        encoder_num_heads : tuple
+            Number of attention heads for each layer of the encoder of the U-former, from top to bottom.
+            Default: (1, 2, 4, 8).
+        bottleneck_depth : int
+            Default: 16.
+        bottleneck_num_heads : int
+            Default: 2.
+        win_size : int
+            Window size for the attention mechanism. Default: 8.
+        mlp_ratio : float
+            Ratio of the hidden dimension size to the embedding dimension size in the MLP layers. Default: 4.0.
+        qkv_bias : bool
+            Whether to use bias in the query, key, and value projections of the attention mechanism. Default: True.
+        qk_scale : float
+            Scale factor for the query and key projection vectors.
+            If set to None, will use the default value of 1 / sqrt(embedding_dim). Default: None.
+        drop_rate : float
+            Dropout rate for the token-level dropout layer. Default: 0.0.
+        attn_drop_rate : float
+            Dropout rate for the attention score matrix. Default: 0.0.
+        drop_path_rate : float
+            Dropout rate for the stochastic depth regularization. Default: 0.1.
+        patch_norm : bool
+            Whether to use normalization for the patch embeddings. Default: True.
+        token_projection : AttentionTokenProjectionType
+            Type of token projection. Must be one of ["linear", "conv"]. Default: AttentionTokenProjectionType.linear.
+        token_mlp : LeWinTransformerMLPTokenType
+            Type of token-level MLP. Must be one of ["leff", "mlp", "ffn"]. Default: LeWinTransformerMLPTokenType.leff.
+        shift_flag : bool
+            Whether to use shift operation in the local attention mechanism. Default: True.
+        modulator : bool
+            Whether to use a modulator in the attention mechanism. Default: False.
+        cross_modulator : bool
+            Whether to use cross-modulation in the attention mechanism. Default: False.
+        normalized : bool
+            Whether to apply normalization before and denormalization after the forward pass.
+        **kwargs: Other keyword arguments to pass to the parent constructor.
+        """
+        super().__init__()
+
+        self.uformer = UFormer(
+            patch_size,
+            in_channels,
+            out_channels,
+            embedding_dim,
+            encoder_depths,
+            encoder_num_heads,
+            bottleneck_depth,
+            bottleneck_num_heads,
+            win_size,
+            mlp_ratio,
+            qkv_bias,
+            qk_scale,
+            drop_rate,
+            attn_drop_rate,
+            drop_path_rate,
+            patch_norm,
+            token_projection,
+            token_mlp,
+            shift_flag,
+            modulator,
+            cross_modulator,
+        )
+
+        self.normalized = normalized
+
+        self.padding_factor = win_size * (2 ** len(encoder_depths))
+
+    def forward(self, x: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
+        """Performs forward pass of :class:`UFormer`.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+        mask : torch.Tensor, optional
+
+        Returns
+        -------
+        torch.Tensor
+        """
+
+        x, _, wpad, hpad = pad_to_square(x, self.padding_factor)
+        if self.normalized:
+            x, mean, std = norm(x)
+
+        x = self.uformer(x, mask)
+
+        if self.normalized:
+            x = unnorm(x, mean, std)
+        x = unpad(x, wpad, hpad)
+
+        return x
+
+    def flops(self):
+        return self.uformer.flops()

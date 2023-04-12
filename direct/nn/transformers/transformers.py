@@ -48,6 +48,7 @@ class VariationalUFormerBlock(nn.Module):
         shift_flag: bool = True,
         modulator: bool = False,
         cross_modulator: bool = False,
+        normalized: bool = True,
     ):
         super().__init__()
         self.forward_operator = forward_operator
@@ -55,7 +56,7 @@ class VariationalUFormerBlock(nn.Module):
 
         self.lr = nn.Parameter(torch.tensor([1.0]))
 
-        self.uformer = UFormer(
+        self.uformer = UFormerModel(
             patch_size=patch_size,
             in_channels=2,
             out_channels=2,
@@ -77,9 +78,8 @@ class VariationalUFormerBlock(nn.Module):
             shift_flag=shift_flag,
             modulator=modulator,
             cross_modulator=cross_modulator,
+            normalized=normalized,
         )
-        self.padding_factor = win_size * (2 ** len(encoder_depths))
-
         self._coil_dim = 1
         self._complex_dim = -1
         self._spatial_dims = (2, 3)
@@ -115,13 +115,7 @@ class VariationalUFormerBlock(nn.Module):
             self.backward_operator(current_kspace, dim=self._spatial_dims), sensitivity_map, dim=self._coil_dim
         ).permute(0, 3, 1, 2)
 
-        regularization_term, _, wpad, hpad = pad_to_square(regularization_term, self.padding_factor)
-        regularization_term, mean, std = norm(regularization_term)
-
-        regularization_term = self.uformer(regularization_term)
-
-        regularization_term = unnorm(regularization_term, mean, std)
-        regularization_term = unpad(regularization_term, wpad, hpad).permute(0, 2, 3, 1)
+        regularization_term = self.uformer(regularization_term).permute(0, 2, 3, 1)
 
         regularization_term = self.forward_operator(
             expand_operator(regularization_term, sensitivity_map, dim=self._coil_dim), dim=self._spatial_dims
