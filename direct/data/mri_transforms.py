@@ -423,8 +423,11 @@ class CropKspace(DirectTransform):
         else:
             crop_shape = self.crop
 
+        cropper_data_list = [backprojected_kspace]
+        if "sampling_mask" in sample:
+            cropper_data_list += [sample["sampling_mask"]]
         cropper_args = {
-            "data_list": [backprojected_kspace],
+            "data_list": cropper_data_list,
             "crop_shape": crop_shape,
             "contiguous": False,
         }
@@ -432,7 +435,12 @@ class CropKspace(DirectTransform):
             cropper_args["seed"] = (
                 None if not self.random_crop_sampler_use_seed else tuple(map(ord, str(sample["filename"])))
             )
-        cropped_backprojected_kspace = self.crop_func(**cropper_args)
+        cropped_output = self.crop_func(**cropper_args)
+        if "sampling_mask" in sample:
+            cropped_backprojected_kspace, sampling_mask = cropped_output
+            sample["sampling_mask"] = sampling_mask
+        else:
+            cropped_backprojected_kspace = cropped_output
 
         # Compute new k-space for the cropped_backprojected_kspace
         # shape (coil, new_height, new_width, complex=2)
