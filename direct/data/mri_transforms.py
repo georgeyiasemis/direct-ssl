@@ -436,9 +436,9 @@ class CropKspace(DirectTransform):
                 None if not self.random_crop_sampler_use_seed else tuple(map(ord, str(sample["filename"])))
             )
         cropped_output = self.crop_func(**cropper_args)
-        if "sampling_mask" in sample:
-            cropped_backprojected_kspace, sampling_mask = cropped_output
-            sample["sampling_mask"] = sampling_mask
+        if "sensitivity_map" in sample:
+            cropped_backprojected_kspace, sensitivity_map = cropped_output
+            sample["sensitivity_map"] = sensitivity_map
         else:
             cropped_backprojected_kspace = cropped_output
 
