@@ -424,8 +424,8 @@ class CropKspace(DirectTransform):
             crop_shape = self.crop
 
         cropper_data_list = [backprojected_kspace]
-        if "sampling_mask" in sample:
-            cropper_data_list += [sample["sampling_mask"]]
+        if "sensitivity_map" in sample:
+            cropper_data_list += [sample["sensitivity_map"]]
         cropper_args = {
             "data_list": cropper_data_list,
             "crop_shape": crop_shape,
