@@ -224,7 +224,7 @@ class VariationalUFormer(nn.Module):
             kspace_prediction = self.blocks[step_idx if self.no_weight_sharing else 0](
                 kspace_prediction, masked_kspace, sampling_mask, sensitivity_map, self.lr[step_idx]
             )
-        kspace_prediction = masked_kspace + apply_mask(kspace_prediction, ~sampling_mask, return_mask=False)
+            kspace_prediction = masked_kspace + apply_mask(kspace_prediction, ~sampling_mask, return_mask=False)
         if padding is not None:
             kspace_prediction = apply_padding(kspace_prediction, padding)
         return kspace_prediction
