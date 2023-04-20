@@ -55,6 +55,7 @@ class VariationalUFormerConfig(ModelConfig):
     shift_flag: bool = True
     modulator: bool = False
     cross_modulator: bool = False
+    no_weight_sharing: bool = True
 
 
 @dataclass
