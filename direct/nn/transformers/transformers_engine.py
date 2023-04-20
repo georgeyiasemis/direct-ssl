@@ -73,13 +73,8 @@ class VariationalUFormerEngine(MRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
             padding=data.get("padding", None),
         )
-        # SENSE reconstruction
-        output_image = T.modulus(
-            T.reduce_operator(
-                self.backward_operator(output_kspace, dim=self._spatial_dims),
-                data["sensitivity_map"],
-                self._coil_dim,
-            )
+        output_image = T.root_sum_of_squares(
+            self.backward_operator(output_kspace, dim=self._spatial_dims), dim=self._coil_dim
         )
         return output_image, output_kspace
 
