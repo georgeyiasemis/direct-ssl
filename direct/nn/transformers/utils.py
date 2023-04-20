@@ -86,7 +86,12 @@ def pad_to_square(
     img[..., hpad[0] : hpad[1], wpad[0] : wpad[1]] = inp.clone()
     mask[..., hpad[0] : hpad[1], wpad[0] : wpad[1]].fill_(1.0)
     # Return the padded tensor and the corresponding mask, and padding in spatial dimensions
-    return img, 1 - mask, (wpad[0], wpad[1] - w), (hpad[0], hpad[1] - h)
+    return (
+        img,
+        1 - mask,
+        (wpad[0], wpad[1] - w + (1 if w % 2 != 0 else 0)),
+        (hpad[0], hpad[1] - h + (1 if h % 2 != 0 else 0)),
+    )
 
 
 def unpad(x: torch.Tensor, wpad: tuple[int, int], hpad: tuple[int, int]) -> torch.Tensor:

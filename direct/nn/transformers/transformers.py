@@ -54,8 +54,6 @@ class VariationalUFormerBlock(nn.Module):
         self.forward_operator = forward_operator
         self.backward_operator = backward_operator
 
-        self.lr = nn.Parameter(torch.tensor([1.0]))
-
         self.uformer = UFormerModel(
             patch_size=patch_size,
             in_channels=2,
@@ -90,6 +88,7 @@ class VariationalUFormerBlock(nn.Module):
         masked_kspace: torch.Tensor,
         sampling_mask: torch.Tensor,
         sensitivity_map: torch.Tensor,
+        learning_rate: torch.Tensor,
     ) -> torch.Tensor:
         """Performs the forward pass of :class:`VariationalUFormerBlock`.
 
@@ -103,6 +102,8 @@ class VariationalUFormerBlock(nn.Module):
             Sampling mask of shape (N, 1, height, width, 1).
         sensitivity_map: torch.Tensor
             Sensitivity map of shape (N, coil, height, width, complex=2).
+        learning_rate : torch.Tensor
+            (Trainable) Learning rate parameter of shape (1,).
 
         Returns
         -------
@@ -121,7 +122,7 @@ class VariationalUFormerBlock(nn.Module):
             expand_operator(regularization_term, sensitivity_map, dim=self._coil_dim), dim=self._spatial_dims
         )
 
-        return current_kspace - self.lr * kspace_error + regularization_term
+        return current_kspace - learning_rate * kspace_error + regularization_term
 
 
 class VariationalUFormer(nn.Module):
@@ -184,6 +185,7 @@ class VariationalUFormer(nn.Module):
                 for _ in range((num_steps if no_weight_sharing else 1))
             ]
         )
+        self.lr = nn.Parameter(torch.tensor([1.0] * num_steps))
         self.num_steps = num_steps
         self.no_weight_sharing = no_weight_sharing
 
@@ -199,10 +201,28 @@ class VariationalUFormer(nn.Module):
         sampling_mask: torch.Tensor,
         padding: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        """Performs the forward pass of :class:`VariationalUFormer`.
+
+        Parameters
+        ----------
+        masked_kspace : torch.Tensor
+            Masked k-space of shape (N, coil, height, width, complex=2).
+        sampling_mask : torch.Tensor
+            Sampling mask of shape (N, 1, height, width, 1).
+        sensitivity_map : torch.Tensor
+            Sensitivity map of shape (N, coil, height, width, complex=2).
+        padding : torch.Tensor, optional
+            Padding of shape (N, 1, height, width, 1). Default: None.
+
+        Returns
+        -------
+        torch.Tensor
+            k-space prediction of shape (N, coil, height, width, complex=2).
+        """
         kspace_prediction = masked_kspace.clone()
         for step_idx in range(self.num_steps):
             kspace_prediction = self.blocks[step_idx if self.no_weight_sharing else 0](
-                kspace_prediction, masked_kspace, sampling_mask, sensitivity_map
+                kspace_prediction, masked_kspace, sampling_mask, sensitivity_map, self.lr[step_idx]
             )
         kspace_prediction = masked_kspace + apply_mask(kspace_prediction, ~sampling_mask, return_mask=False)
         if padding is not None:
