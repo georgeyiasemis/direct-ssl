@@ -1,6 +1,7 @@
 # coding=utf-8
 # Copyright (c) DIRECT Contributors
 
+from direct.functionals.besov_norm import *
 from direct.functionals.challenges import *
 from direct.functionals.grad import *
 from direct.functionals.nmae import NMAELoss
