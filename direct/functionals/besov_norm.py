@@ -7,7 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-__all__ = ["besov_norm_metric", "normalized_besov_norm_metric", "BesovNormLoss", "NormalizedBesovNormLoss"]
+__all__ = ["besov_norm", "normalized_besov_norm", "BesovNormLoss", "NormalizedBesovNormLoss"]
 
 
 def dct(x: torch.Tensor, norm: Optional[str] = None) -> torch.Tensor:
@@ -122,7 +122,7 @@ def besov_norm(img: torch.Tensor, s: int = 2, p: int = 2) -> torch.Tensor:
     return besov_norm_
 
 
-def besov_norm_metric(input: torch.Tensor, target: torch.Tensor, s: int = 2, p: int = 2) -> torch.Tensor:
+def besov_norm(input: torch.Tensor, target: torch.Tensor, s: int = 2, p: int = 2) -> torch.Tensor:
     """Computes the Besov norm metric.
 
     input : torch.Tensor
@@ -142,7 +142,7 @@ def besov_norm_metric(input: torch.Tensor, target: torch.Tensor, s: int = 2, p: 
     return besov_norm(target - input, s, p)
 
 
-def normalized_besov_norm_metric(input: torch.Tensor, target: torch.Tensor, s: int = 2, p: int = 2) -> torch.Tensor:
+def normalized_besov_norm(input: torch.Tensor, target: torch.Tensor, s: int = 2, p: int = 2) -> torch.Tensor:
     """Computes the normalized Besov norm metric.
 
     input : torch.Tensor
@@ -159,7 +159,7 @@ def normalized_besov_norm_metric(input: torch.Tensor, target: torch.Tensor, s: i
     torch.Tensor
         The Besov norm metric between input and target.
     """
-    return besov_norm_metric(target, input, s, p) / besov_norm(target, s, p)
+    return besov_norm(target, input, s, p) / besov_norm(target, s, p)
 
 
 class BesovNormLoss(nn.Module):
@@ -190,7 +190,7 @@ class BesovNormLoss(nn.Module):
         target : torch.Tensor
             Tensor of same shape as the input.
         """
-        return besov_norm_metric(input, target, self.s, self.p)
+        return besov_norm(input, target, self.s, self.p)
 
 
 class NormalizedBesovNormLoss(nn.Module):
@@ -221,4 +221,4 @@ class NormalizedBesovNormLoss(nn.Module):
         target : torch.Tensor
             Tensor of same shape as the input.
         """
-        return normalized_besov_norm_metric(input, target, self.s, self.p)
+        return normalized_besov_norm(input, target, self.s, self.p)
