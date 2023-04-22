@@ -1644,6 +1644,11 @@ class UFormer(nn.Module):
         self.output_proj = OutputProjection(
             in_channels=2 * embedding_dim, out_channels=out_channels, kernel_size=3, stride=1
         )
+        if in_channels != out_channels:
+            self.conv_out = nn.Conv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=1, padding=0)
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
         # Encoder
         self.encoder_layers = nn.ModuleList()
         self.downsamples = nn.ModuleList()
@@ -1785,6 +1790,8 @@ class UFormer(nn.Module):
 
         # Output Projection
         output = self.output_proj(output)
+        if self.in_channels != self.out_channels:
+            input = self.conv_out(input)
         return input + output
 
     def flops(self) -> int:
@@ -1892,7 +1899,7 @@ class UFormerModel(nn.Module):
         cross_modulator : bool
             Whether to use cross-modulation in the attention mechanism. Default: False.
         normalized : bool
-            Whether to apply normalization before and denormalization after the forward pass.
+            Whether to apply normalization before and denormalization after the forward pass. Default: True.
         **kwargs: Other keyword arguments to pass to the parent constructor.
         """
         super().__init__()

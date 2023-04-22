@@ -15,6 +15,7 @@ class ModelName(DirectEnum):
     normunet = "normunet"
     resnet = "resnet"
     didn = "didn"
+    uformer = "uformer"
     conv = "conv"
 
 
