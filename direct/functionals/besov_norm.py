@@ -68,15 +68,15 @@ def dct_2d(x: torch.Tensor, norm: Optional[str] = None) -> torch.Tensor:
     return X2.transpose(-1, -2)
 
 
-def besov_norm(img: torch.Tensor, s: int = 2, p: int = 2) -> torch.Tensor:
+def besov_norm_funct(img: torch.Tensor, s: float = 1.0, p: float = 2.0) -> torch.Tensor:
     """Computes the Besov norm of the input image.
 
     img : torch.Tensor
         The input image.
-    s : int
-        The scaling factor for the Besov decomposition.
-    p : int
-        The exponent of the Besov norm.
+    s : float
+        The scaling factor for the Besov decomposition. Default: 1.0.
+    p : float
+        The exponent of the Besov norm. Default: 2.0
 
     Returns
     -------
@@ -122,58 +122,58 @@ def besov_norm(img: torch.Tensor, s: int = 2, p: int = 2) -> torch.Tensor:
     return besov_norm_
 
 
-def besov_norm(input: torch.Tensor, target: torch.Tensor, s: int = 2, p: int = 2) -> torch.Tensor:
+def besov_norm(input: torch.Tensor, target: torch.Tensor, s: float = 1.0, p: float = 2.0) -> torch.Tensor:
     """Computes the Besov norm metric.
 
     input : torch.Tensor
             Tensor of shape (N, C, H, W).
     target : torch.Tensor
         Tensor of same shape as the input.
-    s : int
-        The scaling factor for the Besov decomposition.
-    p : int
-        The exponent of the Besov norm.
+    s : float
+        The scaling factor for the Besov decomposition. Default: 1.0.
+    p : float
+        The exponent of the Besov norm. Default: 2.0
 
     Returns
     -------
     torch.Tensor
         The Besov norm metric between input and target.
     """
-    return besov_norm(target - input, s, p)
+    return besov_norm_funct(target - input, s, p)
 
 
-def normalized_besov_norm(input: torch.Tensor, target: torch.Tensor, s: int = 2, p: int = 2) -> torch.Tensor:
+def normalized_besov_norm(input: torch.Tensor, target: torch.Tensor, s: float = 1.0, p: float = 2.0) -> torch.Tensor:
     """Computes the normalized Besov norm metric.
 
     input : torch.Tensor
             Tensor of shape (N, C, H, W).
     target : torch.Tensor
         Tensor of same shape as the input.
-    s : int
-        The scaling factor for the Besov decomposition.
-    p : int
-        The exponent of the Besov norm.
+    s : float
+        The scaling factor for the Besov decomposition. Default: 1.0.
+    p : float
+        The exponent of the Besov norm. Default: 2.0
 
     Returns
     -------
     torch.Tensor
         The Besov norm metric between input and target.
     """
-    return besov_norm(target, input, s, p) / besov_norm(target, s, p)
+    return besov_norm(target, input, s, p) / besov_norm_funct(target, s, p)
 
 
 class BesovNormLoss(nn.Module):
     """Computes the Besov norm loss."""
 
-    def __int__(self, s: int = 2, p: int = 2):
+    def __int__(self, s: float = 1.0, p: float = 2.0):
         """Inits :class:`BesovNormLoss`.
 
         Parameters
         ----------
-        s : int
-            The scaling factor for the Besov decomposition.
-        p : int
-            The exponent of the Besov norm.
+        s : float
+        The scaling factor for the Besov decomposition. Default: 1.0.
+        p : float
+            The exponent of the Besov norm. Default: 2.0
 
         """
         super().__init__()
@@ -196,15 +196,15 @@ class BesovNormLoss(nn.Module):
 class NormalizedBesovNormLoss(nn.Module):
     """Computes the normalized Besov norm loss."""
 
-    def __int__(self, s: int = 2, p: int = 2):
+    def __int__(self, s: float = 1.0, p: float = 2.0):
         """Inits :class:`NormalizedBesovNormLoss`.
 
         Parameters
         ----------
-        s : int
-            The scaling factor for the Besov decomposition.
-        p : int
-            The exponent of the Besov norm.
+        s : float
+        The scaling factor for the Besov decomposition. Default: 1.0.
+        p : float
+            The exponent of the Besov norm. Default: 2.0
 
         """
         super().__init__()
