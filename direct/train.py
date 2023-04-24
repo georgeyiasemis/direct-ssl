@@ -228,7 +228,7 @@ def setup_train(
             }
         )
 
-    optimizer: torch.optim.Optimizer = str_to_class("torch.optim", env.cfg.training.optimizer)(  # noqa
+    optimizer: torch.optim.Optimizer = str_to_class("direct.optim", env.cfg.training.optimizer)(  # noqa
         optimizer_params,
         lr=env.cfg.training.lr,
         weight_decay=env.cfg.training.weight_decay,
