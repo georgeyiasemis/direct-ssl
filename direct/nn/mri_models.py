@@ -20,7 +20,16 @@ from torch.utils.data import DataLoader
 import direct.data.transforms as T
 from direct.config import BaseConfig
 from direct.engine import DoIterationOutput, Engine
-from direct.functionals import NMAELoss, NMSELoss, NRMSELoss, SobelGradL1Loss, SobelGradL2Loss, SSIMLoss
+from direct.functionals import (
+    NMAELoss,
+    NMSELoss,
+    NRMSELoss,
+    PSNRLoss,
+    SNRLoss,
+    SobelGradL1Loss,
+    SobelGradL2Loss,
+    SSIMLoss,
+)
 from direct.types import TensorOrNone
 from direct.utils import (
     communication,
@@ -403,6 +412,66 @@ class MRIModelEngine(Engine):
 
             return grad_l2_loss
 
+        def psnr_loss(
+            source: torch.Tensor,
+            target: torch.Tensor,
+            reduction: str = "mean",
+            reconstruction_size: Optional[Tuple] = None,
+        ) -> torch.Tensor:
+            """Calculate peak signal-to-noise ratio loss given source image and target image.
+
+            Parameters
+            ----------
+            source: torch.Tensor
+                Source tensor of shape (batch, height, width, [complex=2]).
+            target: torch.Tensor
+                Target tensor of shape (batch, height, width, [complex=2]).
+            reduction: str
+                Reduction type. Can be "sum" or "mean".
+            reconstruction_size: Optional[Tuple]
+                Reconstruction size to center crop. Default: None.
+
+            Returns
+            -------
+            grad_loss: torch.Tensor
+                PSNR loss.
+            """
+            resolution = get_resolution(reconstruction_size)
+            source_abs, target_abs = _crop_volume(source, target, resolution)
+            psnr_loss = -PSNRLoss(reduction).to(source_abs.device).forward(source_abs, target_abs)
+
+            return psnr_loss
+
+        def snr_loss(
+            source: torch.Tensor,
+            target: torch.Tensor,
+            reduction: str = "mean",
+            reconstruction_size: Optional[Tuple] = None,
+        ) -> torch.Tensor:
+            """Calculate signal-to-noise loss given source image and target image.
+
+            Parameters
+            ----------
+            source: torch.Tensor
+                Source tensor of shape (batch, height, width, [complex=2]).
+            target: torch.Tensor
+                Target tensor of shape (batch, height, width, [complex=2]).
+            reduction: str
+                Reduction type. Can be "sum" or "mean".
+            reconstruction_size: Optional[Tuple]
+                Reconstruction size to center crop. Default: None.
+
+            Returns
+            -------
+            grad_loss: torch.Tensor
+                SNR loss.
+            """
+            resolution = get_resolution(reconstruction_size)
+            source_abs, target_abs = _crop_volume(source, target, resolution)
+            snr_loss = -SNRLoss(reduction).to(source_abs.device).forward(source_abs, target_abs)
+
+            return snr_loss
+
         # Build losses
         loss_dict = {}
         for curr_loss in self.cfg.training.loss.losses:  # type: ignore
@@ -423,6 +492,10 @@ class MRIModelEngine(Engine):
                 loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, nrmse_loss)
             elif loss_fn in ["nmae_loss", "kspace_nmae_loss"]:
                 loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, nmae_loss)
+            elif loss_fn in ["snr_loss", "psnr_loss"]:
+                loss_dict[loss_fn] = multiply_function(
+                    curr_loss.multiplier, (snr_loss if loss_fn == "snr" else psnr_loss)
+                )
             else:
                 raise ValueError(f"{loss_fn} not permissible.")
 

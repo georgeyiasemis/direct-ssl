@@ -7,4 +7,6 @@ from direct.functionals.grad import *
 from direct.functionals.nmae import NMAELoss
 from direct.functionals.nmse import *
 from direct.functionals.psnr import *
+from direct.functionals.snr import SNRLoss
+from direct.functionals.snr import batch_snr as snr
 from direct.functionals.ssim import *
