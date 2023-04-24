@@ -433,8 +433,8 @@ class MRIModelEngine(Engine):
 
             Returns
             -------
-            grad_loss: torch.Tensor
-                PSNR loss.
+            psnr_loss: torch.Tensor
+               PSNR loss.
             """
             resolution = get_resolution(reconstruction_size)
             source_abs, target_abs = _crop_volume(source, target, resolution)
@@ -463,7 +463,7 @@ class MRIModelEngine(Engine):
 
             Returns
             -------
-            grad_loss: torch.Tensor
+            snr_loss: torch.Tensor
                 SNR loss.
             """
             resolution = get_resolution(reconstruction_size)
