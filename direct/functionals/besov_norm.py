@@ -49,7 +49,7 @@ def dct(x: torch.Tensor, norm: Optional[str] = None) -> torch.Tensor:
 
 
 def dct_2d(x: torch.Tensor, norm: Optional[str] = None) -> torch.Tensor:
-    """Computes the 2-dimentional Discrete Cosine Transform, Type II (a.k.a. the DCT)
+    """Computes the 2-dimensional Discrete Cosine Transform, Type II (a.k.a. the DCT).
 
     Parameters
     ----------
@@ -68,13 +68,15 @@ def dct_2d(x: torch.Tensor, norm: Optional[str] = None) -> torch.Tensor:
     return X2.transpose(-1, -2)
 
 
-def besov_norm_funct(img: torch.Tensor, s: float = 1.0, p: float = 2.0) -> torch.Tensor:
+def besov_norm_funct(img: torch.Tensor, reduction: str = "mean", s: float = 1.0, p: float = 2.0) -> torch.Tensor:
     """Computes the Besov norm of the input image.
 
     img : torch.Tensor
         The input image.
+    reduction : str
+        Can be "mean" or "sum". Default: "mean".
     s : float
-        The scaling factor for the Besov decomposition. Default: 1.0.
+        The smoothness parameter for the Besov decomposition. Default: 1.0.
     p : float
         The exponent of the Besov norm. Default: 2.0
 
@@ -83,6 +85,7 @@ def besov_norm_funct(img: torch.Tensor, s: float = 1.0, p: float = 2.0) -> torch
     torch.Tensor
         The Besov norm of the input image.
     """
+    batch_size = img.shape[0]
     # Compute the DCT of the image along the height and width dimensions
     # This converts the image to the frequency domain
     img_dct = dct_2d(img, norm="ortho")
@@ -119,18 +122,26 @@ def besov_norm_funct(img: torch.Tensor, s: float = 1.0, p: float = 2.0) -> torch
     # Compute the overall Besov norm of the image by summing the seminorms at each scale
     besov_norm_ = torch.cat(seminorms).sum() ** (1 / p)
 
+    # Average if reduction is "mean"
+    if reduction == "mean":
+        besov_norm_ = besov_norm_ / batch_size
+
     return besov_norm_
 
 
-def besov_norm(input: torch.Tensor, target: torch.Tensor, s: float = 1.0, p: float = 2.0) -> torch.Tensor:
+def besov_norm(
+    input: torch.Tensor, target: torch.Tensor, reduction: str = "mean", s: float = 1.0, p: float = 2.0
+) -> torch.Tensor:
     """Computes the Besov norm metric.
 
     input : torch.Tensor
             Tensor of shape (N, C, H, W).
     target : torch.Tensor
         Tensor of same shape as the input.
+    reduction : str
+        Can be "mean" or "sum". Default: "mean".
     s : float
-        The scaling factor for the Besov decomposition. Default: 1.0.
+        The smoothness parameter for the Besov decomposition. Default: 1.0.
     p : float
         The exponent of the Besov norm. Default: 2.0
 
@@ -139,18 +150,22 @@ def besov_norm(input: torch.Tensor, target: torch.Tensor, s: float = 1.0, p: flo
     torch.Tensor
         The Besov norm metric between input and target.
     """
-    return besov_norm_funct(target - input, s, p)
+    return besov_norm_funct(target - input, reduction, s, p)
 
 
-def normalized_besov_norm(input: torch.Tensor, target: torch.Tensor, s: float = 1.0, p: float = 2.0) -> torch.Tensor:
+def normalized_besov_norm(
+    input: torch.Tensor, target: torch.Tensor, reduction: str = "mean", s: float = 1.0, p: float = 2.0
+) -> torch.Tensor:
     """Computes the normalized Besov norm metric.
 
     input : torch.Tensor
             Tensor of shape (N, C, H, W).
     target : torch.Tensor
         Tensor of same shape as the input.
+    reduction : str
+        Can be "mean" or "sum". Default: "mean".
     s : float
-        The scaling factor for the Besov decomposition. Default: 1.0.
+        The smoothness parameter for the Besov decomposition. Default: 1.0.
     p : float
         The exponent of the Besov norm. Default: 2.0
 
@@ -159,24 +174,27 @@ def normalized_besov_norm(input: torch.Tensor, target: torch.Tensor, s: float = 
     torch.Tensor
         The Besov norm metric between input and target.
     """
-    return besov_norm(target, input, s, p) / besov_norm_funct(target, s, p)
+    return besov_norm(target, input, reduction, s, p) / besov_norm_funct(target, reduction, s, p)
 
 
 class BesovNormLoss(nn.Module):
     """Computes the Besov norm loss."""
 
-    def __int__(self, s: float = 1.0, p: float = 2.0):
+    def __init__(self, reduction: str = "mean", s: float = 1.0, p: float = 2.0):
         """Inits :class:`BesovNormLoss`.
 
         Parameters
         ----------
+        reduction : str
+            Can be "mean" or "sum". Default: "mean".
         s : float
-        The scaling factor for the Besov decomposition. Default: 1.0.
+            The smoothness parameter for the Besov decomposition. Default: 1.0.
         p : float
             The exponent of the Besov norm. Default: 2.0
 
         """
         super().__init__()
+        self.reduction = reduction
         self.s = s
         self.p = p
 
@@ -190,24 +208,27 @@ class BesovNormLoss(nn.Module):
         target : torch.Tensor
             Tensor of same shape as the input.
         """
-        return besov_norm(input, target, self.s, self.p)
+        return besov_norm(input, target, self.reduction, self.s, self.p)
 
 
 class NormalizedBesovNormLoss(nn.Module):
     """Computes the normalized Besov norm loss."""
 
-    def __int__(self, s: float = 1.0, p: float = 2.0):
+    def __init__(self, reduction: str = "mean", s: float = 1.0, p: float = 2.0):
         """Inits :class:`NormalizedBesovNormLoss`.
 
         Parameters
         ----------
+        reduction : str
+            Can be "mean" or "sum". Default: "mean".
         s : float
-        The scaling factor for the Besov decomposition. Default: 1.0.
+            The smoothness parameter for the Besov decomposition. Default: 1.0.
         p : float
             The exponent of the Besov norm. Default: 2.0
 
         """
         super().__init__()
+        self.reduction = reduction
         self.s = s
         self.p = p
 
@@ -221,4 +242,4 @@ class NormalizedBesovNormLoss(nn.Module):
         target : torch.Tensor
             Tensor of same shape as the input.
         """
-        return normalized_besov_norm(input, target, self.s, self.p)
+        return normalized_besov_norm(input, target, self.reduction, self.s, self.p)

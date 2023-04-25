@@ -21,8 +21,10 @@ import direct.data.transforms as T
 from direct.config import BaseConfig
 from direct.engine import DoIterationOutput, Engine
 from direct.functionals import (
+    BesovNormLoss,
     NMAELoss,
     NMSELoss,
+    NormalizedBesovNormLoss,
     NRMSELoss,
     PSNRLoss,
     SNRLoss,
@@ -472,6 +474,68 @@ class MRIModelEngine(Engine):
 
             return snr_loss
 
+        def besov_norm_loss(
+            source: torch.Tensor,
+            target: torch.Tensor,
+            reduction: str = "mean",
+            reconstruction_size: Optional[Tuple] = None,
+        ) -> torch.Tensor:
+            """Calculate Besov Norm loss given source image and target image.
+
+            Parameters
+            ----------
+            source: torch.Tensor
+                Source tensor of shape (batch, height, width, [complex=2]).
+            target: torch.Tensor
+                Target tensor of shape (batch, height, width, [complex=2]).
+            reduction: str
+                Reduction type. Can be "sum" or "mean".
+            reconstruction_size: Optional[Tuple]
+                Reconstruction size to center crop. Default: None.
+
+            Returns
+            -------
+            bseov_norm_loss: torch.Tensor
+                Besov Norm loss.
+            """
+            resolution = get_resolution(reconstruction_size)
+            source_abs, target_abs = _crop_volume(source, target, resolution)
+            besov_norm_loss = BesovNormLoss(reduction).to(source_abs.device).forward(source_abs, target_abs)
+
+            return besov_norm_loss
+
+        def normalized_besov_norm_loss(
+            source: torch.Tensor,
+            target: torch.Tensor,
+            reduction: str = "mean",
+            reconstruction_size: Optional[Tuple] = None,
+        ) -> torch.Tensor:
+            """Calculate normalized Besov Norm loss given source image and target image.
+
+            Parameters
+            ----------
+            source: torch.Tensor
+                Source tensor of shape (batch, height, width, [complex=2]).
+            target: torch.Tensor
+                Target tensor of shape (batch, height, width, [complex=2]).
+            reduction: str
+                Reduction type. Can be "sum" or "mean".
+            reconstruction_size: Optional[Tuple]
+                Reconstruction size to center crop. Default: None.
+
+            Returns
+            -------
+            normalized_besov_norm_loss: torch.Tensor
+                Normalized Besov Norm loss.
+            """
+            resolution = get_resolution(reconstruction_size)
+            source_abs, target_abs = _crop_volume(source, target, resolution)
+            normalized_besov_norm_loss = (
+                NormalizedBesovNormLoss(reduction).to(source_abs.device).forward(source_abs, target_abs)
+            )
+
+            return normalized_besov_norm_loss
+
         # Build losses
         loss_dict = {}
         for curr_loss in self.cfg.training.loss.losses:  # type: ignore
@@ -496,6 +560,10 @@ class MRIModelEngine(Engine):
                 loss_dict[loss_fn] = multiply_function(
                     curr_loss.multiplier, (snr_loss if loss_fn == "snr" else psnr_loss)
                 )
+            elif loss_fn == "besov_norm_loss":
+                loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, besov_norm_loss)
+            elif loss_fn == "normalized_besov_norm_loss":
+                loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, normalized_besov_norm_loss)
             else:
                 raise ValueError(f"{loss_fn} not permissible.")
 
