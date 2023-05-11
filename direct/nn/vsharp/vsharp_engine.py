@@ -66,7 +66,6 @@ class VSharpNetEngine(MRIModelEngine):
             masked_kspace=data["masked_kspace"],
             sampling_mask=data["sampling_mask"],
             sensitivity_map=data["sensitivity_map"],
-            scaling_factor=None,
         )  # shape (batch, height,  width, complex[=2])
 
         output_kspace = None
@@ -103,7 +102,6 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
             masked_kspace=kspace,
             sensitivity_map=data["sensitivity_map"],
             sampling_mask=mask,
-            scaling_factor=None,
         )
 
         output_kspace = T.apply_padding(
@@ -211,6 +209,5 @@ class VSharpNetN2NEngine(N2NMRIModelEngine):
             masked_kspace=data["noisier_kspace"] if self.model.training else data["masked_kspace"],
             sensitivity_map=data["sensitivity_map"],
             sampling_mask=data["noisier_sampling_mask"] if self.model.training else data["sampling_mask"],
-            scaling_factor=None,
         )
         return output_image, None
