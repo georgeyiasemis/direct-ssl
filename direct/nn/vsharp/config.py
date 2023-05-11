@@ -15,9 +15,9 @@ class VSharpNetConfig(ModelConfig):
     image_init: str = "sense"
     no_parameter_sharing: bool = True
     image_model_architecture: ModelName = ModelName.unet
-    initializer_channels: tuple[int, ...] = ((32, 32, 64, 64),)
-    initializer_dilations: tuple[int, ...] = ((1, 1, 2, 4),)
-    initializer_multiscale: int = (1,)
+    initializer_channels: tuple[int, ...] = (32, 32, 64, 64)
+    initializer_dilations: tuple[int, ...] = (1, 1, 2, 4)
+    initializer_multiscale: int = 1
     image_resnet_hidden_channels: int = 128
     image_resnet_num_blocks: int = 15
     image_resnet_batchnorm: bool = True
