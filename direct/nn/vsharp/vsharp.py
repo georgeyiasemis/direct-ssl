@@ -89,7 +89,7 @@ class LagrangeMultipliersInitializer(nn.Module):
         if self.multiscale_depth > 1:
             x = torch.cat(features[-self.multiscale_depth :], dim=1)
 
-        return self.activation(self.out_block(x), inplace=True)
+        return self.activation(self.out_block(x))
 
 
 class VSharpNet(nn.Module):
