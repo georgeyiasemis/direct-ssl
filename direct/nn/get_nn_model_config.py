@@ -12,6 +12,16 @@ from direct.nn.types import ActivationType, ModelName
 from direct.nn.unet.unet_2d import NormUnetModel2d, UnetModel2d
 
 
+def _get_activation(activation: ActivationType):
+    return (
+        nn.PReLU()
+        if activation == ActivationType.prelu
+        else nn.ReLU()
+        if activation == ActivationType.relu
+        else nn.LeakyReLU()
+    )
+
+
 def _get_model_config(
     model_architecture_name: ModelName, in_channels: int = COMPLEX_SIZE, out_channels: int = COMPLEX_SIZE, **kwargs
 ) -> nn.Module:
@@ -77,11 +87,7 @@ def _get_model_config(
             {
                 "hidden_channels": kwargs.get("conv_hidden_channels", 64),
                 "n_convs": kwargs.get("conv_n_convs", 15),
-                "activation": nn.PReLU()
-                if kwargs.get("conv_activation", "prelu") == ActivationType.prelu
-                else nn.ReLU()
-                if kwargs.get("conv_activation", "relu") == ActivationType.relu
-                else nn.LeakyReLU(),
+                "activation": _get_activation(kwargs.get("conv_activation", ActivationType.relu)),
                 "batchnorm": kwargs.get("conv_batchnorm", False),
             }
         )

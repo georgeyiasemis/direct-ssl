@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from typing import Callable, Optional, Tuple
+from typing import Callable
 
 import numpy as np
 import torch
@@ -12,9 +12,9 @@ import torch.nn.functional as F
 from torch import nn
 
 from direct.constants import COMPLEX_SIZE
-from direct.data.transforms import expand_operator, reduce_operator
-from direct.nn.get_nn_model_config import ModelName, _get_model_config
-from direct.nn.types import InitType
+from direct.data.transforms import apply_mask, expand_operator, reduce_operator
+from direct.nn.get_nn_model_config import ModelName, _get_activation, _get_model_config
+from direct.nn.types import ActivationType, InitType
 
 
 class LagrangeMultipliersInitializer(nn.Module):
@@ -27,6 +27,7 @@ class LagrangeMultipliersInitializer(nn.Module):
         channels: tuple[int, ...],
         dilations: tuple[int, ...],
         multiscale_depth: int = 1,
+        activation: ActivationType = ActivationType.prelu,
     ):
         """Inits :class:`LagrangeMultipliersInitializer`.
 
@@ -63,6 +64,8 @@ class LagrangeMultipliersInitializer(nn.Module):
 
         self.multiscale_depth = multiscale_depth
 
+        self.activation = _get_activation(activation)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass of :class:`LagrangeMultipliersInitializer`.
 
@@ -86,7 +89,7 @@ class LagrangeMultipliersInitializer(nn.Module):
         if self.multiscale_depth > 1:
             x = torch.cat(features[-self.multiscale_depth :], dim=1)
 
-        return F.relu(self.out_block(x), inplace=True)
+        return self.activation(self.out_block(x), inplace=True)
 
 
 class VSharpNet(nn.Module):
@@ -102,13 +105,12 @@ class VSharpNet(nn.Module):
         initializer_channels: tuple[int, ...] = (32, 32, 64, 64),
         initializer_dilations: tuple[int, ...] = (1, 1, 2, 4),
         initializer_multiscale: int = 1,
+        initializer_activation: ActivationType = ActivationType.prelu,
         **kwargs,
     ):
         super().__init__()
         self.num_steps = num_steps
         self.num_steps_dc_gd = num_steps_dc_gd
-
-        self.denoisers = nn.ModuleList()
 
         self.no_parameter_sharing = no_parameter_sharing
 
@@ -117,12 +119,14 @@ class VSharpNet(nn.Module):
 
         image_model, image_model_kwargs = _get_model_config(
             image_model_architecture,
-            in_channels=COMPLEX_SIZE * 2,
+            in_channels=COMPLEX_SIZE * 3,
             out_channels=COMPLEX_SIZE,
             **{k.replace("image_", ""): v for (k, v) in kwargs.items() if "image_" in k},
         )
+
+        self.denoiser_blocks = nn.ModuleList()
         for _ in range(num_steps if self.no_parameter_sharing else 1):
-            self.denoisers.append(image_model(**image_model_kwargs))
+            self.denoiser_blocks.append(image_model(**image_model_kwargs))
 
         self.initializer = LagrangeMultipliersInitializer(
             COMPLEX_SIZE,
@@ -130,10 +134,11 @@ class VSharpNet(nn.Module):
             channels=initializer_channels,
             dilations=initializer_dilations,
             multiscale_depth=initializer_multiscale,
+            activation=initializer_activation,
         )
 
-        self.learning_rate_lambda = nn.Parameter(torch.ones(num_steps, requires_grad=True))
-        nn.init.trunc_normal_(self.learning_rate_lambda, 0.0, 1.0, 0.0)
+        self.lmbda = nn.Parameter(torch.ones(1, requires_grad=True))
+        nn.init.trunc_normal_(self.lmbda, 0.0, 1.0, 0.0)
 
         self.learning_rate_eta = nn.Parameter(torch.ones(num_steps_dc_gd, requires_grad=True))
         nn.init.trunc_normal_(self.learning_rate_eta, 0.0, 1.0, 0.0)
@@ -183,19 +188,21 @@ class VSharpNet(nn.Module):
         else:
             x = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
 
+        z = x.clone()
+
         u = self.initializer(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
 
         for iz in range(self.num_steps):
-            z = self.learning_rate_lambda[iz] * self.denoisers[iz if self.no_parameter_sharing else 0](
-                torch.cat([x, u], dim=self._complex_dim).permute(0, 3, 1, 2)
+            z = (self.lmbda / self.rho) * self.denoiser_blocks[iz if self.no_parameter_sharing else 0](
+                torch.cat([z, x, u / self.rho], dim=self._complex_dim).permute(0, 3, 1, 2)
             ).permute(0, 2, 3, 1)
 
             for ix in range(self.num_steps_dc_gd):
-                dc = torch.where(
-                    sampling_mask == 0,
-                    torch.tensor([0.0], dtype=masked_kspace.dtype).to(masked_kspace.device),
+                dc = apply_mask(
                     self.forward_operator(expand_operator(x, sensitivity_map, self._coil_dim), dim=self._spatial_dims)
                     - masked_kspace,
+                    sampling_mask,
+                    return_mask=False,
                 )
                 dc = self.backward_operator(dc, dim=self._spatial_dims)
                 dc = reduce_operator(dc, sensitivity_map, self._coil_dim)
