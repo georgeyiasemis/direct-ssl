@@ -106,6 +106,8 @@ class VSharpNet(nn.Module):
         initializer_dilations: tuple[int, ...] = (1, 1, 2, 4),
         initializer_multiscale: int = 1,
         initializer_activation: ActivationType = ActivationType.prelu,
+        kspace_no_parameter_sharing: bool = True,
+        kspace_model_architecture: Optional[ModelName] = None,
         **kwargs,
     ):
         super().__init__()
@@ -116,6 +118,8 @@ class VSharpNet(nn.Module):
 
         if image_model_architecture not in ["unet", "normunet", "resnet", "didn", "conv", "uformer"]:
             raise ValueError(f"Invalid value {image_model_architecture} for `image_model_architecture`.")
+        if kspace_model_architecture not in ["unet", "normunet", "resnet", "didn", "conv", "uformer", None]:
+            raise ValueError(f"Invalid value {kspace_model_architecture} for `kspace_model_architecture`.")
 
         image_model, image_model_kwargs = _get_model_config(
             image_model_architecture,
@@ -123,6 +127,20 @@ class VSharpNet(nn.Module):
             out_channels=COMPLEX_SIZE,
             **{k.replace("image_", ""): v for (k, v) in kwargs.items() if "image_" in k},
         )
+
+        if kspace_model_architecture:
+            self.kspace_no_parameter_sharing = kspace_no_parameter_sharing
+            kspace_model, kspace_model_kwargs = _get_model_config(
+                kspace_model_architecture,
+                in_channels=COMPLEX_SIZE,
+                out_channels=COMPLEX_SIZE,
+                **{k.replace("kspace_", ""): v for (k, v) in kwargs.items() if "kspace_" in k},
+            )
+            self.kspace_denoiser = kspace_model(**kspace_model_kwargs)
+            self.scale_k = nn.Parameter(torch.ones(1, requires_grad=True))
+            nn.init.trunc_normal_(self.scale_k, 0, 0.1, 0.0)
+        else:
+            self.kspace_denoiser = None
 
         self.denoiser_blocks = nn.ModuleList()
         for _ in range(num_steps if self.no_parameter_sharing else 1):
@@ -193,6 +211,11 @@ class VSharpNet(nn.Module):
         u = self.initializer(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
 
         for iz in range(self.num_steps):
+            if self.kspace_denoiser:
+                z = self.kspace_denoiser(
+                    self.forward_operator(z, dim=[_ - 1 for _ in self._spatial_dims]).permute(0, 3, 1, 2)
+                )
+                z = self.backward_operator(z, dim=[_ - 1 for _ in self._spatial_dims]).permute(0, 2, 3, 1)
             z = (self.lmbda / self.rho) * self.denoiser_blocks[iz if self.no_parameter_sharing else 0](
                 torch.cat([z, x, u / self.rho], dim=self._complex_dim).permute(0, 3, 1, 2)
             ).permute(0, 2, 3, 1)
