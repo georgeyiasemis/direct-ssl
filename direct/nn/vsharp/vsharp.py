@@ -206,7 +206,7 @@ class VSharpNet(nn.Module):
         else:
             x = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
 
-        z = x.clone()
+        z = x.clone().contiguous()
 
         u = self.initializer(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
 
