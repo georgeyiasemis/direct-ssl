@@ -40,6 +40,7 @@ class PSNRLoss(nn.Module):
     __constants__ = ["reduction"]
 
     def __init__(self, reduction="mean"):
+        super().__init__()
         self.reduction = reduction
 
     def forward(self, input_data, target_data):
