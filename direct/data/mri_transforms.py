@@ -16,7 +16,13 @@ import torch
 from direct.algorithms.mri_algorithms import EspiritCalibration
 from direct.data import transforms as T
 from direct.exceptions import ItemNotFoundException
-from direct.ssl.ssl import GaussianMaskSplitterModule, UniformMaskSplitterModule
+from direct.ssl.ssl import (
+    GaussianMaskSplitterModule,
+    HalfMaskSplitterModule,
+    HalfSplitType,
+    MaskSplitterType,
+    UniformMaskSplitterModule,
+)
 from direct.types import DirectEnum, KspaceKey, TransformKey
 from direct.utils import DirectModule, DirectTransform
 from direct.utils.asserts import assert_complex
@@ -1760,8 +1766,9 @@ def build_mri_transforms(
     mask_split_ratio: Union[float, List[float], Tuple[float, ...]] = 0.4,
     mask_split_acs_region: Union[List[int], Tuple[int, int]] = (0, 0),
     mask_split_keep_acs: Optional[bool] = False,
-    mask_split_type: str = "gaussian",
+    mask_split_type: MaskSplitterType = MaskSplitterType.gaussian,
     mask_split_gaussian_std: float = 3.0,
+    mask_split_half_direction: HalfSplitType = HalfSplitType.vertical,
 ) -> object:
     """Build transforms for MRI.
 
@@ -1847,10 +1854,13 @@ def build_mri_transforms(
         or input mask (if `ssl_transforms` = "ssdu"). Default: (0, 0).
     mask_split_keep_acs : Optional[bool]
         If True, acs region according to the "acs_mask" of the sample will be used in both mask splits. Default: False.
-    mask_split_type : str
+    mask_split_type : MaskSplitterType
         How the sampling mask will be split. Can be "uniform" or "gaussian". Default: "gaussian".
     mask_split_gaussian_std : float
         Standard deviation of gaussian mask splitting. Ignored if `mask_split_type` is not "gaussian". Default: 3.0.
+    mask_split_half_direction : HalfSplitType
+        Split type if `mask_split_type` is "vertical. Can be "vertical", "horizontal", "diagonal_left",
+        or "diagonal_right". Ignored if `mask_split_type` is not "vertical". Default: HalfSplitType.vertical.
 
     Returns
     -------
@@ -1901,7 +1911,11 @@ def build_mri_transforms(
     mri_transforms += [
         GaussianMaskSplitter(**mask_splitter_kwargs, std_scale=mask_split_gaussian_std)
         if mask_split_type == "gaussian"
-        else UniformMaskSplitter(**mask_splitter_kwargs),
+        else UniformMaskSplitter(**mask_splitter_kwargs)
+        if mask_split_type == "uniform"
+        else HalfMaskSplitterModule(
+            **{k: v for k, v in mask_splitter_kwargs.items() if k != "ratio"}, direction=mask_split_half_direction
+        ),
         DeleteKeys(["acs_mask"]),
     ]
     if ssl_transforms == "ssdu":

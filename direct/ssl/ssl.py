@@ -16,7 +16,7 @@ from direct.ssl.mask_fillers import gaussian_fill, uniform_fill
 from direct.types import DirectEnum, KspaceKey
 from direct.utils import DirectModule
 
-__all__ = ["GaussianMaskSplitterModule", "UniformMaskSplitterModule"]
+__all__ = ["GaussianMaskSplitterModule", "HalfMaskSplitterModule", "HalfSplitType", "UniformMaskSplitterModule"]
 
 
 @contextlib.contextmanager
@@ -29,9 +29,17 @@ def temp_seed(rng, seed):
         rng.set_state(state)
 
 
-class MaskSplitterSplitType(DirectEnum):
+class MaskSplitterType(DirectEnum):
     uniform = "uniform"
     gaussian = "gaussian"
+    half = "half"
+
+
+class HalfSplitType(DirectEnum):
+    horizontal = "horizontal"
+    vertical = "vertical"
+    diagonal_left = "diagonal_left"
+    diagonal_right = "diagonal_right"
 
 
 class MaskSplitter(DirectModule):
@@ -55,7 +63,7 @@ class MaskSplitter(DirectModule):
 
     def __init__(
         self,
-        split_type: MaskSplitterSplitType,
+        split_type: MaskSplitterType,
         ratio: Union[float, List[float], Tuple[float, ...]] = 0.5,
         acs_region: Union[List[int], Tuple[int, int]] = (0, 0),
         keep_acs: bool = False,
@@ -66,7 +74,7 @@ class MaskSplitter(DirectModule):
 
         Parameters
         ----------
-        split_type: MaskSplitterSplitType
+        split_type: MaskSplitterType
             Type of mask splitting. Can be `gaussian` or `uniform`.
         ratio: list of tuple of floats
             Split ratio such that :math:`ratio \approx \frac{|A|}{|B|}. Default: 0.5.
@@ -234,6 +242,35 @@ class MaskSplitter(DirectModule):
 
         return theta_mask, lambda_mask
 
+    def _half_split(self, mask: torch.Tensor, direction: HalfSplitType, acs_mask: Optional[torch.Tensor] = None):
+        nrow, ncol = mask.shape
+
+        center_x = nrow // 2
+        center_y = ncol // 2
+
+        if direction in ["horizontal", "vertical"]:
+            theta_mask, lambda_mask = [torch.zeros_like(mask, dtype=mask.dtype, device=mask.device) for _ in range(2)]
+            if direction == "horizontal":
+                theta_mask[:center_x] = mask[:center_x]
+                lambda_mask[center_x:] = mask[center_x:]
+            else:
+                theta_mask[:, :center_y] = mask[:, :center_y]
+                lambda_mask[:, center_y:] = mask[:, center_y:]
+        else:
+            x = torch.linspace(-1, 1, nrow)
+            y = torch.linspace(-1, 1, ncol)
+            xv, yv = torch.meshgrid(x, y)
+            if direction == "diagonal_right":
+                theta_mask = mask * (xv + yv <= 0)
+                lambda_mask = mask * (xv + yv > 0)
+            else:
+                theta_mask = mask * (xv - yv <= 0)
+                lambda_mask = mask * (xv - yv > 0)
+        if self.keep_acs:
+            theta_mask, lambda_mask = theta_mask | acs_mask, lambda_mask | acs_mask
+
+        return theta_mask, lambda_mask
+
     @staticmethod
     def _unsqueeze_mask(masks: Iterable[torch.Tensor]) -> List[torch.Tensor]:
         """Unsqueeze coil and complex dimensions of mask tensors.
@@ -349,7 +386,7 @@ class UniformMaskSplitterModule(MaskSplitter):
             K-space key. Default "masked_kspace".
         """
         super().__init__(
-            split_type=MaskSplitterSplitType.uniform,
+            split_type=MaskSplitterType.uniform,
             ratio=ratio,
             acs_region=acs_region,
             keep_acs=keep_acs,
@@ -418,7 +455,7 @@ class GaussianMaskSplitterModule(MaskSplitter):
             This is used to calculate the standard deviation of the Gaussian distribution. Default: 3.0.
         """
         super().__init__(
-            split_type=MaskSplitterSplitType.gaussian,
+            split_type=MaskSplitterType.gaussian,
             ratio=ratio,
             acs_region=acs_region,
             keep_acs=keep_acs,
@@ -453,6 +490,75 @@ class GaussianMaskSplitterModule(MaskSplitter):
             mask=sampling_mask.squeeze(),
             seed=seed,
             std_scale=self.std_scale,
+            acs_mask=acs_mask.squeeze() if self.keep_acs else None,
+        )
+        return theta_mask, lambda_mask
+
+
+class HalfMaskSplitterModule(MaskSplitter):
+    """Splits the input mask into two disjoint masks in a half line direction."""
+
+    def __init__(
+        self,
+        acs_region: Union[List[int], Tuple[int, int]] = (0, 0),
+        keep_acs: bool = False,
+        use_seed: bool = True,
+        direction: HalfSplitType = HalfSplitType.vertical,
+        kspace_key: KspaceKey = KspaceKey.masked_kspace,
+    ):
+        """Inits :class:`GaussianMaskSplitterModule`.
+
+        Parameters
+        ----------
+        acs_region: List[int] or Tuple[int, int], optional
+            Size of ACS region to include in training (input) mask. Default: (0, 0).
+        keep_acs: bool, optional
+            If True, both input and target masks will keep the acs region and ratio will be applied on the rest of the mask.
+            Assumes `acs_mask` is present in the sample. Default: False.
+        use_seed: bool, optional
+            If True, a pseudo-random number based on the filename is computed so that every slice of the volume get
+            the same mask every time. Default: True.
+        kspace_key: str, optional
+            K-space key. Default "masked_kspace".
+        """
+        super().__init__(
+            split_type=MaskSplitterType.half,
+            ratio=[0.5],
+            acs_region=acs_region,
+            keep_acs=keep_acs,
+            use_seed=use_seed,
+            kspace_key=kspace_key,
+        )
+        self.direction = direction
+
+    def split_method(
+        self,
+        sampling_mask: torch.Tensor,
+        acs_mask: Union[torch.Tensor, None],
+        seed: Union[int, Iterable[int], None],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Splits the `sampling_mask` into two disjoint masks based on gaussian split method.
+
+        Parameters
+        ----------
+        sampling_mask : torch.Tensor
+            The input mask tensor to be split.
+        acs_mask : torch.Tensor or None
+            The ACS mask. Needs to be passed if `keep_acs` is True. If `keep_acs` is False but this is passed, it will be
+            ignored. Default: None.
+        seed : int, iterable of ints or None
+            Seed to generate split.
+
+
+        Returns
+        -------
+        Tuple[torch.Tensor, torch.Tensor]:
+            The two disjoint masks, theta_mask and lambda_mask.
+        """
+
+        theta_mask, lambda_mask = self._half_split(
+            mask=sampling_mask.squeeze(),
+            direction=self.direction,
             acs_mask=acs_mask.squeeze() if self.keep_acs else None,
         )
         return theta_mask, lambda_mask
