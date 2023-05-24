@@ -215,13 +215,14 @@ class VSharpNet(nn.Module):
                 kspace_z = self.kspace_denoiser(
                     self.forward_operator(z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims]).permute(0, 3, 1, 2)
                 ).permute(0, 2, 3, 1)
-                z = self.scale_k * self.backward_operator(
-                    kspace_z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims]
-                )
+                kspace_z = self.backward_operator(kspace_z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims])
 
             z = (self.lmbda / self.rho) * self.denoiser_blocks[iz if self.no_parameter_sharing else 0](
                 torch.cat([z, x, u / self.rho], dim=self._complex_dim).permute(0, 3, 1, 2)
             ).permute(0, 2, 3, 1)
+
+            if self.kspace_denoiser:
+                z = z + self.scale_k * kspace_z
 
             for ix in range(self.num_steps_dc_gd):
                 dc = apply_mask(

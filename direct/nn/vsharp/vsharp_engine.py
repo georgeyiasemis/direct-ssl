@@ -68,7 +68,17 @@ class VSharpNetEngine(MRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
         )  # shape (batch, height,  width, complex[=2])
 
-        output_kspace = None
+        output_kspace = data["masked_kspace"] + T.apply_mask(
+            T.apply_padding(
+                self.forward_operator(
+                    T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim),
+                    dim=self._spatial_dims,
+                ),
+                padding=data["padding"],
+            ),
+            ~data["sampling_mask"],
+            return_mask=False,
+        )
 
         return output_image, output_kspace
 
