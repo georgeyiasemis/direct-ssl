@@ -1,12 +1,13 @@
 # coding=utf-8
 # Copyright (c) DIRECT Contributors
+
 import torch
 import torch.nn as nn
 
-__all__ = ("batch_snr", "SNRLoss")
+__all__ = ("snr", "SNRLoss")
 
 
-def batch_snr(input_data, target_data, reduction="mean"):
+def snr(input_data, target_data, reduction="mean"):
     """This function is a torch implementation of SNR metric for batches.
 
     Parameters
@@ -25,14 +26,14 @@ def batch_snr(input_data, target_data, reduction="mean"):
 
     square_error = torch.sum(target_view**2, 1)
     square_error_noise = torch.sum((input_view - target_view) ** 2, 1)
-    snr = 10.0 * (torch.log10(square_error) - torch.log10(square_error_noise))
+    snr_metric = 10.0 * (torch.log10(square_error) - torch.log10(square_error_noise))
 
     if reduction == "mean":
-        return snr.mean()
+        return snr_metric.mean()
     if reduction == "sum":
-        return snr.sum()
+        return snr_metric.sum()
     if reduction == "none":
-        return snr
+        return snr_metric
     raise ValueError(f"Reduction is either `mean`, `sum` or `none`. Got {reduction}.")
 
 
@@ -42,4 +43,4 @@ class SNRLoss(nn.Module):
         self.reduction = reduction
 
     def forward(self, input_data, target_data):
-        return batch_snr(input_data, target_data, reduction=self.reduction)
+        return snr(input_data, target_data, reduction=self.reduction)
