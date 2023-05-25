@@ -12,9 +12,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 
-from direct.nn.transformers.utils import DropoutPath, init_weights
+from direct.nn.transformers.utils import DropoutPath, init_weights, norm, pad, unnorm, unpad
 
-__all__ = ["VisionTransformer"]
+__all__ = ["VisionTransformer", "VisionTransformerModel"]
 
 
 class MLP(nn.Module):
@@ -625,5 +625,77 @@ class VisionTransformer(nn.Module):
         x = self.forward_features(x)
         x = self.head(x)
         x = self.seq2img(x, (H, W))
+
+        return x
+
+
+class VisionTransformerModel(VisionTransformer):
+    def __init__(
+        self,
+        average_img_size: Union[int, Tuple[int, int]] = 320,
+        patch_size: Union[int, Tuple[int, int]] = 10,
+        in_channels: int = 1,
+        out_channels: int = None,
+        embedding_dim: int = 64,
+        depth: int = 8,
+        num_heads: int = 9,
+        mlp_ratio: float = 4.0,
+        qkv_bias: bool = False,
+        qk_scale: float = None,
+        drop_rate: float = 0.0,
+        attn_drop_rate: float = 0.0,
+        dropout_path_rate: float = 0.0,
+        norm_layer: nn.Module = nn.LayerNorm,
+        gpsa_interval: Tuple[int, int] = (-1, -1),
+        locality_strength: float = 1.0,
+        use_pos_embedding: bool = True,
+        normalized: bool = True,
+    ):
+        super().__init__(
+            average_img_size,
+            patch_size,
+            in_channels,
+            out_channels,
+            embedding_dim,
+            depth,
+            num_heads,
+            mlp_ratio,
+            qkv_bias,
+            qk_scale,
+            drop_rate,
+            attn_drop_rate,
+            dropout_path_rate,
+            norm_layer,
+            gpsa_interval,
+            locality_strength,
+            use_pos_embedding,
+        )
+        self.normalized = normalized
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Performs forward pass of :class:`VisionTransformerModel`.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+
+        Returns
+        -------
+        torch.Tensor
+        """
+        _, _, H, W = x.shape
+        x, wpad, hpad = pad(x.permute(0, 3, 1, 2), self.transformers[0].patch_size)
+
+        if self.normalized:
+            x, mean, std = norm(x)
+
+        x = self.forward_features(x)
+        x = self.head(x)
+        x = self.seq2img(x, (H, W))
+
+        if self.normalized:
+            x = unnorm(x, mean, std)
+
+        x = unpad(x, wpad, hpad).permute(0, 2, 3, 1)
 
         return x
