@@ -628,6 +628,64 @@ class MRIModelEngine(Engine):
 
             return HFENL2Loss(reduction=reduction, norm=False).to(source_abs.device).forward(source_abs, target_abs)
 
+        def hfen_l1_norm_loss(
+            source: torch.Tensor,
+            target: torch.Tensor,
+            reduction: str = "mean",
+            reconstruction_size: Optional[Tuple] = None,
+        ) -> torch.Tensor:
+            """Calculate normalized HFEN L1 loss given source image and target image.
+
+            Parameters
+            ----------
+            source: torch.Tensor
+                Source tensor of shape (batch, height, width, [complex=2]).
+            target: torch.Tensor
+                Target tensor of shape (batch, height, width, [complex=2]).
+            reduction: str
+                Reduction type. Can be "sum" or "mean".
+            reconstruction_size: Optional[Tuple]
+                Reconstruction size to center crop. Default: None.
+
+            Returns
+            -------
+            torch.Tensor
+                Normalized HFEN l1 loss.
+            """
+            resolution = get_resolution(reconstruction_size)
+            source_abs, target_abs = _crop_volume(source, target, resolution)
+
+            return HFENL1Loss(reduction=reduction, norm=True).to(source_abs.device).forward(source_abs, target_abs)
+
+        def hfen_l2_norm_loss(
+            source: torch.Tensor,
+            target: torch.Tensor,
+            reduction: str = "mean",
+            reconstruction_size: Optional[Tuple] = None,
+        ) -> torch.Tensor:
+            """Calculate normalized HFEN L2 loss given source image and target image.
+
+            Parameters
+            ----------
+            source: torch.Tensor
+                Source tensor of shape (batch, height, width, [complex=2]).
+            target: torch.Tensor
+                Target tensor of shape (batch, height, width, [complex=2]).
+            reduction: str
+                Reduction type. Can be "sum" or "mean".
+            reconstruction_size: Optional[Tuple]
+                Reconstruction size to center crop. Default: None.
+
+            Returns
+            -------
+            torch.Tensor
+                Normalized HFEN l2 loss.
+            """
+            resolution = get_resolution(reconstruction_size)
+            source_abs, target_abs = _crop_volume(source, target, resolution)
+
+            return HFENL2Loss(reduction=reduction, norm=True).to(source_abs.device).forward(source_abs, target_abs)
+
         # Build losses
         loss_dict = {}
         for curr_loss in self.cfg.training.loss.losses:  # type: ignore
@@ -660,6 +718,10 @@ class MRIModelEngine(Engine):
                 loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, hfen_l1_loss)
             elif loss_fn == "hfen_l2_loss":
                 loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, hfen_l2_loss)
+            elif loss_fn == "hfen_l1_norm_loss":
+                loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, hfen_l1_norm_loss)
+            elif loss_fn == "hfen_l2_norm_loss":
+                loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, hfen_l2_norm_loss)
             else:
                 raise ValueError(f"{loss_fn} not permissible.")
 
