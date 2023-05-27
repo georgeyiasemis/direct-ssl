@@ -259,7 +259,7 @@ class MaskSplitter(DirectModule):
         else:
             x = torch.linspace(-1, 1, nrow)
             y = torch.linspace(-1, 1, ncol)
-            xv, yv = torch.meshgrid(x, y)
+            xv, yv = torch.meshgrid(x, y, indexing="ij")
             if direction == "diagonal_right":
                 theta_mask = mask * (xv + yv <= 0)
                 lambda_mask = mask * (xv + yv > 0)

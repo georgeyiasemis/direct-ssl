@@ -41,7 +41,7 @@ def get_log_kernel2d(kernel_size: int | list[int] = 5, sigma: Optional[float | l
     if isinstance(sigma, float):
         sigma = [sigma] * dim
 
-    grids = torch.meshgrid([torch.arange(-size // 2, size // 2 + 1, 1) for size in kernel_size], indexing=None)
+    grids = torch.meshgrid([torch.arange(-size // 2, size // 2 + 1, 1) for size in kernel_size], indexing="ij")
 
     kernel = 1
     for size, std, mgrid in zip(kernel_size, sigma, grids):
