@@ -569,12 +569,12 @@ class VisionTransformer(nn.Module):
         self.norm = norm_layer(embedding_dim)
         # head
         self.feature_info = [dict(num_chs=embedding_dim, reduction=0, module="head")]
-        self.head = nn.Linear(self.num_features, in_channels * self.patch_size[0] * self.patch_size[1])
+        self.head = nn.Linear(self.num_features, self.out_channels * self.patch_size[0] * self.patch_size[1])
 
         self.head.apply(init_weights)
 
     def seq2img(self, x: torch.Tensor, img_size: Tuple[int, ...]):
-        x = x.view(x.shape[0], x.shape[1], self.in_channels, self.patch_size[0], self.patch_size[1])
+        x = x.view(x.shape[0], x.shape[1], self.out_channels, self.patch_size[0], self.patch_size[1])
         x = x.chunk(x.shape[1], dim=1)
         x = torch.cat(x, dim=4).permute(0, 1, 2, 4, 3)
         x = x.chunk(img_size[0] // self.patch_size[0], dim=3)
@@ -590,7 +590,7 @@ class VisionTransformer(nn.Module):
         return self.head
 
     def reset_head(self) -> None:
-        self.head = nn.Linear(self.num_features, self.in_channels * self.patch_size[0] * self.patch_size[1])
+        self.head = nn.Linear(self.num_features, self.out_channels * self.patch_size[0] * self.patch_size[1])
 
     def forward_features(self, x: torch.Tensor) -> torch.Tensor:
         x = self.patch_embed(x)
