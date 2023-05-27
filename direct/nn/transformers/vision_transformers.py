@@ -684,7 +684,7 @@ class VisionTransformerModel(VisionTransformer):
         torch.Tensor
         """
         _, _, H, W = x.shape
-        x, wpad, hpad = pad(x.permute(0, 3, 1, 2), self.transformers[0].patch_size)
+        x, wpad, hpad = pad(x.permute(0, 3, 1, 2), self.patch_size)
 
         if self.normalized:
             x, mean, std = norm(x)
