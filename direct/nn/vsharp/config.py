@@ -91,7 +91,7 @@ class VSharpNetConfig(ModelConfig):
     image_vision_transformer_num_heads: int = 9
     image_vision_transformer_mlp_ratio: float = 4.0
     image_vision_transformer_qkv_bias: bool = False
-    image_vision_transformer_qk_scale: float = None
+    image_vision_transformer_qk_scale: Optional[float] = None
     image_vision_transformer_drop_rate: float = (0.0,)
     image_vision_transformer_attn_drop_rate: float = (0.0,)
     image_vision_transformer_dropout_path_rate: float = 0.0
@@ -106,7 +106,7 @@ class VSharpNetConfig(ModelConfig):
     kspace_vision_transformer_num_heads: int = 9
     kspace_vision_transformer_mlp_ratio: float = 4.0
     kspace_vision_transformer_qkv_bias: bool = False
-    kspace_vision_transformer_qk_scale: float = None
+    kspace_vision_transformer_qk_scale: Optional[float] = None
     kspace_vision_transformer_drop_rate: float = (0.0,)
     kspace_vision_transformer_attn_drop_rate: float = (0.0,)
     kspace_vision_transformer_dropout_path_rate: float = 0.0
