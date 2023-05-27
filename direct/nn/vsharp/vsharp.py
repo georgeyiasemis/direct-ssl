@@ -93,6 +93,21 @@ class LagrangeMultipliersInitializer(nn.Module):
 
 
 class VSharpNet(nn.Module):
+    """
+
+    It solves the augmented Lagrangian derivation of the variable half quadratic splitting problem using ADMM:
+
+    .. math ::
+        \vec{z}^{t+1}  = \argmin_{\vec{z}}\, \lambda \, \mathcal{G}(\vec{z}) +
+            \frac{\rho}{2} \big | \big | \vec{x}^{t} - \vec{z} + \frac{\vec{u}^t}{\rho} \big | \big |_2^2
+             \quad \Big[\vec{z}\text{-step}\Big]
+        \vec{x}^{t+1}  = \argmin_{\vec{x}}\, \frac{1}{2} \big | \big | \mathcal{A}_{\mat{U},\mat{S}}(\vec{x}) -
+            \tilde{\vec{y}} \big | \big |_2^2 + \frac{\rho}{2} \big | \big | \vec{x} - \vec{z}^{t+1}
+            + \frac{\vec{u}^t}{\rho} \big | \big |_2^2 \quad \Big[\vec{x}\text{-step}\Big]
+        \vec{u}^{t+1} = \vec{u}^t + \rho (\vec{x}^{t+1} - \vec{z}^{t+1}) \quad \Big[\vec{u}\text{-step}\Big]
+
+    """
+
     def __init__(
         self,
         forward_operator: Callable,
@@ -116,9 +131,26 @@ class VSharpNet(nn.Module):
 
         self.no_parameter_sharing = no_parameter_sharing
 
-        if image_model_architecture not in ["unet", "normunet", "resnet", "didn", "conv", "uformer"]:
+        if image_model_architecture not in [
+            "unet",
+            "normunet",
+            "resnet",
+            "didn",
+            "conv",
+            "uformer",
+            "vision_transformer",
+        ]:
             raise ValueError(f"Invalid value {image_model_architecture} for `image_model_architecture`.")
-        if kspace_model_architecture not in ["unet", "normunet", "resnet", "didn", "conv", "uformer", None]:
+        if kspace_model_architecture not in [
+            "unet",
+            "normunet",
+            "resnet",
+            "didn",
+            "conv",
+            "uformer",
+            "vision_transformer",
+            None,
+        ]:
             raise ValueError(f"Invalid value {kspace_model_architecture} for `kspace_model_architecture`.")
 
         image_model, image_model_kwargs = _get_model_config(
@@ -208,22 +240,18 @@ class VSharpNet(nn.Module):
 
         z = x.clone()
 
+        if self.kspace_denoiser:
+            kspace_z = self.kspace_denoiser(
+                self.forward_operator(z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims]).permute(0, 3, 1, 2)
+            ).permute(0, 2, 3, 1)
+            kspace_z = self.backward_operator(kspace_z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims])
+
+        if self.kspace_denoiser:
+            z = z + self.scale_k * kspace_z
+
         u = self.initializer(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
 
         for iz in range(self.num_steps):
-            if self.kspace_denoiser:
-                kspace_z = self.kspace_denoiser(
-                    self.forward_operator(z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims]).permute(0, 3, 1, 2)
-                ).permute(0, 2, 3, 1)
-                kspace_z = self.backward_operator(kspace_z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims])
-
-            z = (self.lmbda / self.rho) * self.denoiser_blocks[iz if self.no_parameter_sharing else 0](
-                torch.cat([z, x, u / self.rho], dim=self._complex_dim).permute(0, 3, 1, 2)
-            ).permute(0, 2, 3, 1)
-
-            if self.kspace_denoiser:
-                z = z + self.scale_k * kspace_z
-
             for ix in range(self.num_steps_dc_gd):
                 dc = apply_mask(
                     self.forward_operator(expand_operator(x, sensitivity_map, self._coil_dim), dim=self._spatial_dims)
