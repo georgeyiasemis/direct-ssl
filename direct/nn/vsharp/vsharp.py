@@ -155,7 +155,7 @@ class VSharpNet(nn.Module):
 
         image_model, image_model_kwargs = _get_model_config(
             image_model_architecture,
-            in_channels=COMPLEX_SIZE * 3,
+            in_channels=COMPLEX_SIZE * 4 if kspace_model_architecture else COMPLEX_SIZE * 3,
             out_channels=COMPLEX_SIZE,
             **{k.replace("image_", ""): v for (k, v) in kwargs.items() if "image_" in k},
         )
@@ -240,21 +240,22 @@ class VSharpNet(nn.Module):
 
         z = x.clone()
 
-        if self.kspace_denoiser:
-            kspace_z = self.kspace_denoiser(
-                self.forward_operator(z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims]).permute(0, 3, 1, 2)
-            ).permute(0, 2, 3, 1)
-            kspace_z = self.backward_operator(kspace_z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims])
-
-        if self.kspace_denoiser:
-            z = z + self.scale_k * kspace_z
-
         u = self.initializer(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
 
         for iz in range(self.num_steps):
+            if self.kspace_denoiser:
+                kspace_z = self.kspace_denoiser(
+                    self.forward_operator(z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims]).permute(0, 3, 1, 2)
+                ).permute(0, 2, 3, 1)
+                kspace_z = self.backward_operator(kspace_z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims])
+
             z = (self.lmbda / self.rho) * self.denoiser_blocks[iz if self.no_parameter_sharing else 0](
-                torch.cat([z, x, u / self.rho], dim=self._complex_dim).permute(0, 3, 1, 2)
+                torch.cat(
+                    [z, x, u / self.rho] + ([self.scale_k * kspace_z] if self.kspace_denoiser else []),
+                    dim=self._complex_dim,
+                ).permute(0, 3, 1, 2)
             ).permute(0, 2, 3, 1)
+
             for ix in range(self.num_steps_dc_gd):
                 dc = apply_mask(
                     self.forward_operator(expand_operator(x, sensitivity_map, self._coil_dim), dim=self._spatial_dims)
