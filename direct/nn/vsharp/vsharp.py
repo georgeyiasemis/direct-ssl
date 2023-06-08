@@ -276,9 +276,6 @@ class VSharpNet(nn.Module):
                 if iz in self.auxiliary_steps:
                     out.append(x)
 
-            if iz == self.num_steps - 1:
-                break
-
             u = u + self.rho[iz] * (x - z)
 
             out.append(x)
