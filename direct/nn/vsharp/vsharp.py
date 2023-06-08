@@ -123,6 +123,7 @@ class VSharpNet(nn.Module):
         initializer_activation: ActivationType = ActivationType.prelu,
         kspace_no_parameter_sharing: bool = True,
         kspace_model_architecture: Optional[ModelName] = None,
+        auxiliary_steps: int = 0,
         **kwargs,
     ):
         super().__init__()
@@ -187,13 +188,10 @@ class VSharpNet(nn.Module):
             activation=initializer_activation,
         )
 
-        self.lmbda = nn.Parameter(torch.ones(1, requires_grad=True))
-        nn.init.trunc_normal_(self.lmbda, 0.0, 1.0, 0.0)
-
         self.learning_rate_eta = nn.Parameter(torch.ones(num_steps_dc_gd, requires_grad=True))
         nn.init.trunc_normal_(self.learning_rate_eta, 0.0, 1.0, 0.0)
 
-        self.rho = nn.Parameter(torch.ones(1, requires_grad=True))
+        self.rho = nn.Parameter(torch.ones(num_steps, requires_grad=True))
         nn.init.trunc_normal_(self.rho, 0, 0.1, 0.0)
 
         self.forward_operator = forward_operator
@@ -204,6 +202,11 @@ class VSharpNet(nn.Module):
 
         self.image_init = image_init
 
+        if auxiliary_steps == -1:
+            self.auxiliary_steps = list(range(num_steps - 1))
+        else:
+            self.auxiliary_steps = list(range(min(auxiliary_steps, num_steps - 1)))
+
         self._coil_dim = 1
         self._complex_dim = -1
         self._spatial_dims = (2, 3)
@@ -213,7 +216,7 @@ class VSharpNet(nn.Module):
         masked_kspace: torch.Tensor,
         sensitivity_map: torch.Tensor,
         sampling_mask: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> list[torch.Tensor]:
         """Computes forward pass of :class:`MRIVarSplitNet`.
 
         Parameters
@@ -229,6 +232,7 @@ class VSharpNet(nn.Module):
         image: torch.Tensor
             Output image of shape (N, height, width, complex=2).
         """
+        out = []
         if self.image_init == "sense":
             x = reduce_operator(
                 coil_data=self.backward_operator(masked_kspace, dim=self._spatial_dims),
@@ -249,9 +253,9 @@ class VSharpNet(nn.Module):
                 ).permute(0, 2, 3, 1)
                 kspace_z = self.backward_operator(kspace_z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims])
 
-            z = (self.lmbda / self.rho) * self.denoiser_blocks[iz if self.no_parameter_sharing else 0](
+            z = self.denoiser_blocks[iz if self.no_parameter_sharing else 0](
                 torch.cat(
-                    [z, x, u / self.rho] + ([self.scale_k * kspace_z] if self.kspace_denoiser else []),
+                    [z, x, u / self.rho[iz]] + ([self.scale_k * kspace_z] if self.kspace_denoiser else []),
                     dim=self._complex_dim,
                 ).permute(0, 3, 1, 2)
             ).permute(0, 2, 3, 1)
@@ -266,8 +270,16 @@ class VSharpNet(nn.Module):
                 dc = self.backward_operator(dc, dim=self._spatial_dims)
                 dc = reduce_operator(dc, sensitivity_map, self._coil_dim)
 
-                x = x - self.learning_rate_eta[ix] * (dc + self.rho * (x - z) + u)
+                x = x - self.learning_rate_eta[ix] * (dc + self.rho[iz] * (x - z) + u)
 
-            u = u + self.rho * (x - z)
+            if self.training:
+                if iz in self.auxiliary_steps:
+                    out.append(x)
 
-        return x
+            if iz == self.num_steps - 1:
+                break
+
+            u = u + self.rho[iz] * (x - z)
+
+            out.append(x)
+        return out

@@ -14,6 +14,7 @@ class VSharpNetConfig(ModelConfig):
     num_steps_dc_gd: int = 8
     image_init: str = "sense"
     no_parameter_sharing: bool = True
+    auxiliary_steps: int = 0
     image_model_architecture: ModelName = ModelName.unet
     initializer_channels: tuple[int, ...] = (32, 32, 64, 64)
     initializer_dilations: tuple[int, ...] = (1, 1, 2, 4)

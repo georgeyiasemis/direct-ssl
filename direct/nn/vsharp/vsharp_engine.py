@@ -5,9 +5,11 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 import torch
 from torch import nn
+from torch.cuda.amp import autocast
 
 from direct.config import BaseConfig
 from direct.data import transforms as T
+from direct.engine import DoIterationOutput
 from direct.nn.mri_models import MRIModelEngine
 from direct.nn.ssl.mri_models import (
     DualSSL2MRIModelEngine,
@@ -15,6 +17,8 @@ from direct.nn.ssl.mri_models import (
     N2NMRIModelEngine,
     SSDUMRIModelEngine,
 )
+from direct.types import TensorOrNone
+from direct.utils import detach_dict, dict_to_device
 
 
 class VSharpNetEngine(MRIModelEngine):
@@ -59,15 +63,79 @@ class VSharpNetEngine(MRIModelEngine):
             **models,
         )
 
+    def _do_iteration(
+        self,
+        data: Dict[str, Any],
+        loss_fns: Optional[Dict[str, Callable]] = None,
+        regularizer_fns: Optional[Dict[str, Callable]] = None,
+    ) -> DoIterationOutput:
+        """Performs forward method and calculates loss functions.
+
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            Data containing keys with values tensors such as k-space, image, sensitivity map, etc.
+        loss_fns : Optional[Dict[str, Callable]]
+            Callable loss functions.
+        regularizer_fns : Optional[Dict[str, Callable]]
+            Callable regularization functions.
+
+        Returns
+        -------
+        DoIterationOutput
+            Contains outputs.
+        """
+
+        # loss_fns can be None, e.g. during validation
+        if loss_fns is None:
+            loss_fns = {}
+
+        data = dict_to_device(data, self.device)
+
+        output_image: TensorOrNone
+        output_kspace: TensorOrNone
+
+        with autocast(enabled=self.mixed_precision):
+            data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
+
+            output_images, output_kspace = self.forward_function(data)
+            output_images = [T.modulus_if_complex(_, complex_axis=self._complex_dim) for _ in output_images]
+            loss_dict = {k: torch.tensor([0.0], dtype=data["target"].dtype).to(self.device) for k in loss_fns.keys()}
+
+            auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
+            for i in range(len(output_images)):
+                loss_dict = self.compute_loss_on_data(
+                    loss_dict, loss_fns, data, output_images[i], None, auxiliary_loss_weights[i]
+                )
+
+            loss_dict = self.compute_loss_on_data(
+                loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
+            )
+
+            loss = sum(loss_dict.values())  # type: ignore
+
+        if self.model.training:
+            self._scaler.scale(loss).backward()
+
+        loss_dict = detach_dict(loss_dict)  # Detach dict, only used for logging.
+
+        output_image = output_images[-1]
+        return DoIterationOutput(
+            output_image=output_image,
+            sensitivity_map=data["sensitivity_map"],
+            data_dict={**loss_dict},
+        )
+
     def forward_function(self, data: Dict[str, Any]) -> Tuple[torch.Tensor, None]:
         data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
 
-        output_image = self.model(
+        output_images = self.model(
             masked_kspace=data["masked_kspace"],
             sampling_mask=data["sampling_mask"],
             sensitivity_map=data["sensitivity_map"],
         )  # shape (batch, height,  width, complex[=2])
 
+        output_image = output_images[-1]
         output_kspace = data["masked_kspace"] + T.apply_mask(
             T.apply_padding(
                 self.forward_operator(
@@ -80,7 +148,7 @@ class VSharpNetEngine(MRIModelEngine):
             return_mask=False,
         )
 
-        return output_image, output_kspace
+        return output_images, output_kspace
 
 
 class VSharpNetSSDUEngine(SSDUMRIModelEngine):
