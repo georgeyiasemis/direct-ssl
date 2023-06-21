@@ -168,6 +168,9 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
             **models,
         )
 
+    def forward_function(self, data: Dict[str, Any]) -> Tuple[TensorOrNone, TensorOrNone]:
+        pass
+
     def _do_iteration(
         self,
         data: Dict[str, Any],
