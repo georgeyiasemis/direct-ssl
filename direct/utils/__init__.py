@@ -232,6 +232,24 @@ def merge_list_of_dicts(list_of_dicts: List[Dict]) -> Dict:
     return functools.reduce(lambda a, b: {**dict(a), **dict(b)}, list_of_dicts)
 
 
+def merge_list_of_lists(list_of_lists: List[List]) -> List:
+    """A list of lists is merged into one list.
+
+    Parameters
+    ----------
+    list_of_lists: List[List]
+
+    Returns
+    -------
+    List
+    """
+
+    if not list_of_lists:
+        return []
+
+    return functools.reduce(lambda a, b: a + b, list_of_lists)
+
+
 def evaluate_dict(
     fns_dict: Dict[str, Callable], source: torch.Tensor, target: torch.Tensor, reduction: str = "mean"
 ) -> Dict:
