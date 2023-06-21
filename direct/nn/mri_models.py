@@ -40,6 +40,7 @@ from direct.utils import (
     detach_dict,
     dict_to_device,
     merge_list_of_dicts,
+    merge_list_of_lists,
     multiply_function,
     reduce_list_of_dicts,
 )
@@ -957,6 +958,69 @@ class MRIModelEngine(Engine):
         all_gathered_metrics = merge_list_of_dicts(communication.all_gather(val_volume_metrics))
         return loss_dict, all_gathered_metrics, visualize_slices, visualize_target
 
+    @torch.no_grad()
+    def reconstruct_and_evaluate(  # type: ignore
+        self,
+        data_loader: DataLoader,
+        loss_fns: Optional[Dict[str, Callable]],
+    ):
+        """Validation process.
+
+        Assumes that each batch only contains slices of the same volume *AND* that these are sequentially ordered.
+
+        Parameters
+        ----------
+        data_loader: DataLoader
+        loss_fns: Dict[str, Callable], optional
+
+        Returns
+        -------
+        loss_dict, all_gathered_metrics, visualize_slices, visualize_target
+        """
+        # pylint: disable=arguments-differ, too-many-locals
+
+        self.models_to_device()
+        self.models_validation_mode()
+        torch.cuda.empty_cache()
+
+        volume_metrics = self.build_metrics(self.cfg.inference.metrics)  # type: ignore
+        val_volume_metrics: Dict[PathLike, Dict] = defaultdict(dict)
+
+        reconstructed_volumes: List[torch.Tensor] = []
+        reconstructed_volume_filenames: List[str] = []
+
+        for _, output in enumerate(
+            self.reconstruct_volumes(
+                data_loader, loss_fns=loss_fns, add_target=True, crop=self.cfg.validation.crop  # type: ignore
+            )
+        ):
+            volume, target, volume_loss_dict, filename = output
+            curr_metrics = {
+                metric_name: metric_fn(target, volume).clone() for metric_name, metric_fn in volume_metrics.items()
+            }
+            curr_metrics_string = ", ".join([f"{x}: {float(y)}" for x, y in curr_metrics.items()])
+            self.logger.info("Metrics for %s: %s", filename, curr_metrics_string)
+            # TODO: Path can be tricky if it is not unique (e.g. image.h5)
+            val_volume_metrics[filename.name] = curr_metrics
+
+            # Log the center slice of the volume
+            reconstructed_volumes.append(volume)
+            reconstructed_volume_filenames.append(filename)
+
+        communication.synchronize()
+        torch.cuda.empty_cache()
+
+        all_reconstructed_volumes = merge_list_of_lists(communication.all_gather(reconstructed_volumes))
+        all_reconstructed_volume_filenames = merge_list_of_lists(
+            communication.all_gather(reconstructed_volume_filenames)
+        )
+        all_gathered_metrics = merge_list_of_dicts(communication.all_gather(val_volume_metrics))
+
+        output = [
+            (vol, filename) for (vol, filename) in zip(all_reconstructed_volumes, all_reconstructed_volume_filenames)
+        ]
+        return output, all_gathered_metrics
+
     def compute_model_per_coil(self, model_name: str, data: torch.Tensor) -> torch.Tensor:
         """Performs forward pass of model `model_name` in `self.models` per coil.
 
@@ -986,6 +1050,7 @@ class MRIModelEngine(Engine):
         data: Dict[str, Any],
         output_image: Optional[torch.Tensor] = None,
         output_kspace: Optional[torch.Tensor] = None,
+        weight: float = 1.0,
     ) -> Dict[str, torch.Tensor]:
         if output_image is None and output_kspace is None:
             raise ValueError("Inputs for `output_image` and `output_kspace` cannot be both None.")
@@ -994,7 +1059,7 @@ class MRIModelEngine(Engine):
                 if output_kspace is not None:
                     output, target, reconstruction_size = output_kspace, data["kspace"], None
                 else:
-                    raise ValueError(f"Requested to compute `{key}` loss but received None for `output_kspace`.")
+                    continue
             else:
                 if output_image is not None:
                     output, target, reconstruction_size = (
@@ -1003,8 +1068,8 @@ class MRIModelEngine(Engine):
                         data.get("reconstruction_size", None),
                     )
                 else:
-                    raise ValueError(f"Requested to compute `{key}` loss but received None for `output_image`.")
-            loss_dict[key] = value + loss_fns[key](output, target, "mean", reconstruction_size)
+                    continue
+            loss_dict[key] = value + weight * loss_fns[key](output, target, "mean", reconstruction_size)
         return loss_dict
 
     def _forward_operator(self, image, sensitivity_map, sampling_mask):

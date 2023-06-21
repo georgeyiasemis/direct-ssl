@@ -11,12 +11,7 @@ from direct.config import BaseConfig
 from direct.data import transforms as T
 from direct.engine import DoIterationOutput
 from direct.nn.mri_models import MRIModelEngine
-from direct.nn.ssl.mri_models import (
-    DualSSL2MRIModelEngine,
-    DualSSLMRIModelEngine,
-    N2NMRIModelEngine,
-    SSDUMRIModelEngine,
-)
+from direct.nn.ssl.mri_models import SSDUMRIModelEngine
 from direct.types import TensorOrNone
 from direct.utils import detach_dict, dict_to_device
 
@@ -173,119 +168,69 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
             **models,
         )
 
-    def forward_function(self, data: Dict[str, Any]) -> Tuple[None, torch.Tensor]:
+    def _do_iteration(
+        self,
+        data: Dict[str, Any],
+        loss_fns: Optional[Dict[str, Callable]] = None,
+        regularizer_fns: Optional[Dict[str, Callable]] = None,
+    ) -> DoIterationOutput:
+        if loss_fns is None:
+            loss_fns = {}
+
+        data = dict_to_device(data, self.device)
+
         kspace = data["input_kspace"] if self.model.training else data["masked_kspace"]
         mask = data["input_sampling_mask"] if self.model.training else data["sampling_mask"]
-        output_image = self.model(
-            masked_kspace=kspace,
+
+        with autocast(enabled=self.mixed_precision):
+            data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
+
+            output_images = self.model(
+                masked_kspace=kspace,
+                sensitivity_map=data["sensitivity_map"],
+                sampling_mask=mask,
+            )
+
+            # In SSDU training we use output kspace to compute loss
+            if self.model.training:
+                for i in range(len(output_images)):
+                    # Data consistency
+                    output_kspace = T.apply_padding(
+                        kspace + self._forward_operator(output_images[i], data["sensitivity_map"], ~mask),
+                        padding=data["padding"],
+                    )
+                    # Project predicted k-space onto target k-space
+                    output_kspace = T.apply_mask(output_kspace, data["target_sampling_mask"], return_mask=False)
+                    # SENSE reconstruction
+                    output_images[i] = T.modulus(
+                        T.reduce_operator(
+                            self.backward_operator(output_kspace, dim=self._spatial_dims),
+                            data["sensitivity_map"],
+                            self._coil_dim,
+                        )
+                    )
+                output_image = output_images[i]
+
+                auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
+                for i in range(len(output_images)):
+                    loss_dict = self.compute_loss_on_data(
+                        loss_dict, loss_fns, data, output_images[i], None, auxiliary_loss_weights[i]
+                    )
+
+                loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, output_kspace)
+
+                loss = sum(loss_dict.values())  # type: ignore
+
+                if self.model.training:
+                    self._scaler.scale(loss).backward()
+
+                loss_dict = detach_dict(loss_dict)  # Detach dict, only used for logging.
+
+            else:
+                output_image = T.modulus(output_images[-1])
+
+        return DoIterationOutput(
+            output_image=output_image,
             sensitivity_map=data["sensitivity_map"],
-            sampling_mask=mask,
+            data_dict=loss_dict if self.model.training else {},
         )
-
-        output_kspace = T.apply_padding(
-            kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
-            padding=data["padding"],
-        )
-        return None, output_kspace
-
-
-class VSharpNetDualSSLEngine(DualSSLMRIModelEngine):
-    def __init__(
-        self,
-        cfg: BaseConfig,
-        model: nn.Module,
-        device: str,
-        forward_operator: Optional[Callable] = None,
-        backward_operator: Optional[Callable] = None,
-        mixed_precision: bool = False,
-        **models: nn.Module,
-    ):
-        """Inits :class:`VSharpNetDualSSLEngine`."""
-        super().__init__(
-            cfg,
-            model,
-            device,
-            forward_operator=forward_operator,
-            backward_operator=backward_operator,
-            mixed_precision=mixed_precision,
-            **models,
-        )
-
-    def forward_function(
-        self,
-        data: Dict[str, Any],
-        masked_kspace: torch.Tensor,
-        sampling_mask: torch.Tensor,
-    ) -> Tuple[torch.Tensor, None]:
-        output_image = self.model(
-            masked_kspace=masked_kspace,
-            sensitivity_map=data["sensitivity_map"],
-            sampling_mask=sampling_mask,
-        )
-        return output_image, None
-
-
-class VSharpNetDualSSL2Engine(DualSSL2MRIModelEngine):
-    def __init__(
-        self,
-        cfg: BaseConfig,
-        model: nn.Module,
-        device: str,
-        forward_operator: Optional[Callable] = None,
-        backward_operator: Optional[Callable] = None,
-        mixed_precision: bool = False,
-        **models: nn.Module,
-    ):
-        super().__init__(
-            cfg,
-            model,
-            device,
-            forward_operator=forward_operator,
-            backward_operator=backward_operator,
-            mixed_precision=mixed_precision,
-            **models,
-        )
-
-    def forward_function(
-        self,
-        data: Dict[str, Any],
-        masked_kspace: torch.Tensor,
-        sampling_mask: torch.Tensor,
-    ) -> Tuple[torch.Tensor, None]:
-        output_image = self.model(
-            masked_kspace=masked_kspace,
-            sensitivity_map=data["sensitivity_map"],
-            sampling_mask=sampling_mask,
-        )
-        return output_image, None
-
-
-class VSharpNetN2NEngine(N2NMRIModelEngine):
-    def __init__(
-        self,
-        cfg: BaseConfig,
-        model: nn.Module,
-        device: str,
-        forward_operator: Optional[Callable] = None,
-        backward_operator: Optional[Callable] = None,
-        mixed_precision: bool = False,
-        **models: nn.Module,
-    ):
-        """Inits :class:`VSharpNetN2NEngine`."""
-        super().__init__(
-            cfg,
-            model,
-            device,
-            forward_operator=forward_operator,
-            backward_operator=backward_operator,
-            mixed_precision=mixed_precision,
-            **models,
-        )
-
-    def forward_function(self, data: Dict[str, Any]) -> Tuple[torch.Tensor, None]:
-        output_image = self.model(
-            masked_kspace=data["noisier_kspace"] if self.model.training else data["masked_kspace"],
-            sensitivity_map=data["sensitivity_map"],
-            sampling_mask=data["noisier_sampling_mask"] if self.model.training else data["sampling_mask"],
-        )
-        return output_image, None
