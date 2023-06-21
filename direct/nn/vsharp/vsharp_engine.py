@@ -184,6 +184,7 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
 
         kspace = data["input_kspace"] if self.model.training else data["masked_kspace"]
         mask = data["input_sampling_mask"] if self.model.training else data["sampling_mask"]
+        loss_dict = {k: torch.tensor([0.0], dtype=data["target"].dtype).to(self.device) for k in loss_fns.keys()}
 
         with autocast(enabled=self.mixed_precision):
             data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
