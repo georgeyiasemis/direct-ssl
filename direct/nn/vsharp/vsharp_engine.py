@@ -197,6 +197,7 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
 
             # In SSDU training we use output kspace to compute loss
             if self.model.training:
+                auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
                 for i in range(len(output_images)):
                     # Data consistency
                     output_kspace = T.apply_padding(
@@ -205,6 +206,10 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
                     )
                     # Project predicted k-space onto target k-space
                     output_kspace = T.apply_mask(output_kspace, data["target_sampling_mask"], return_mask=False)
+                    loss_dict = self.compute_loss_on_data(
+                        loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
+                    )
+
                     # SENSE reconstruction
                     output_images[i] = T.modulus(
                         T.reduce_operator(
@@ -213,15 +218,10 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
                             self._coil_dim,
                         )
                     )
-                output_image = output_images[i]
-
-                auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
-                for i in range(len(output_images)):
                     loss_dict = self.compute_loss_on_data(
                         loss_dict, loss_fns, data, output_images[i], None, auxiliary_loss_weights[i]
                     )
-
-                loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, output_kspace)
+                output_image = output_images[i]
 
                 loss = sum(loss_dict.values())  # type: ignore
 
