@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 import torch
 from torch import nn
 
+import direct.data.transforms as T
 from direct.config import BaseConfig
 from direct.nn.mri_models import MRIModelEngine
 from direct.nn.ssl.mri_models import *
@@ -67,13 +68,19 @@ class LPDNetSSDUSSLEngine(SSDUMRIModelEngine):
             **models,
         )
 
-    def forward_function(self, data: Dict[str, Any]) -> Tuple[torch.Tensor, None]:
+    def forward_function(self, data: Dict[str, Any]) -> Tuple[None, torch.Tensor]:
+        kspace = data["input_kspace"] if self.model.training else data["masked_kspace"]
+        mask = data["input_sampling_mask"] if self.model.training else data["sampling_mask"]
         output_image = self.model(
-            masked_kspace=data["input_kspace"] if self.model.training else data["masked_kspace"],
+            masked_kspace=kspace,
             sensitivity_map=data["sensitivity_map"],
-            sampling_mask=data["input_sampling_mask"] if self.model.training else data["sampling_mask"],
+            sampling_mask=mask,
         )
-        return output_image, None
+        output_kspace = T.apply_padding(
+            kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
+            padding=data["padding"],
+        )
+        return None, output_kspace
 
 
 class LPDNetDualSSLEngine(DualSSLMRIModelEngine):
