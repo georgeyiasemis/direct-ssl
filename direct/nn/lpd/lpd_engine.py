@@ -47,7 +47,7 @@ class LPDNetEngine(MRIModelEngine):
         return output_image, None
 
 
-class LPDNetSSDUSSLEngine(SSDUMRIModelEngine):
+class LPDNetSSDUEngine(SSDUMRIModelEngine):
     def __init__(
         self,
         cfg: BaseConfig,
