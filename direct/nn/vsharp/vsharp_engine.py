@@ -200,7 +200,7 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
                 if len(output_images) > 1:
                     auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
                 else:
-                    auxiliary_loss_weights = torch.ones(1.0).to(output_images[0])
+                    auxiliary_loss_weights = torch.ones(1).to(output_images[0])
                 for i in range(len(output_images)):
                     # Data consistency
                     output_kspace = T.apply_padding(
