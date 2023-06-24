@@ -334,9 +334,8 @@ class VSharpNet(nn.Module):
 
                 x = x - self.learning_rate_eta[dc_gd_step] * (dc + self.rho[admm_step] * (x - z) + u)
 
-            if self.training:
-                if admm_step in self.auxiliary_steps:
-                    out.append(x)
+            if admm_step in self.auxiliary_steps:
+                out.append(x)
 
             u = u + self.rho[admm_step] * (x - z)
 
