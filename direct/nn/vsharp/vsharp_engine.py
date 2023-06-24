@@ -197,7 +197,10 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
 
             # In SSDU training we use output kspace to compute loss
             if self.model.training:
-                auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
+                if len(output_images) > 1:
+                    auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
+                else:
+                    auxiliary_loss_weights = torch.ones(1.0).to(output_images[0])
                 for i in range(len(output_images)):
                     # Data consistency
                     output_kspace = T.apply_padding(
