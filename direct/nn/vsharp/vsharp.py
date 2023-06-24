@@ -93,9 +93,14 @@ class LagrangeMultipliersInitializer(nn.Module):
 
 
 class VSharpNet(nn.Module):
-    """
+    """Variable Splitting Half-quadratic ADMM algorithm for Reconstruction of Parallel MRI.
 
-    It solves the augmented Lagrangian derivation of the variable half quadratic splitting problem using ADMM:
+    Variable Splitting Half Quadratic  VSharpNet is a deep learning model that solves the augmented Lagrangian derivation
+    of the variable half quadratic splitting problem using ADMM (Alternating Direction Method of Multipliers).
+    It is designed for solving inverse problems in magnetic resonance imaging (MRI).
+
+    The VSharpNet model incorporates an iterative optimization algorithm that consists of three steps: z-step, x-step,
+    and u-step:
 
     .. math ::
         \vec{z}^{t+1}  = \argmin_{\vec{z}}\, \lambda \, \mathcal{G}(\vec{z}) +
@@ -106,6 +111,20 @@ class VSharpNet(nn.Module):
             + \frac{\vec{u}^t}{\rho} \big | \big |_2^2 \quad \Big[\vec{x}\text{-step}\Big]
         \vec{u}^{t+1} = \vec{u}^t + \rho (\vec{x}^{t+1} - \vec{z}^{t+1}) \quad \Big[\vec{u}\text{-step}\Big]
 
+
+    In the z-step, the model minimizes the augmented Lagrangian function with respect to z using DL based
+    denoisers.
+
+    In the x-step, it optimizes x by minimizing the data consistency term by unrolling a
+    gradient descent scheme (DC-GD).
+
+    In the u-step, the model updates the Lagrange multiplier u. These steps are performed iteratively for
+    a specified number of steps.
+
+    The VSharpNet model supports both image and k-space domain parameterizations. It includes an initializer for
+    Lagrange multipliers.
+
+    It can also incorporate auxiliary steps during training for improved performance.
     """
 
     def __init__(
@@ -126,6 +145,44 @@ class VSharpNet(nn.Module):
         auxiliary_steps: int = 0,
         **kwargs,
     ):
+        """Inits :class:`VSharpNet`.
+
+        Parameters
+        ----------
+        forward_operator : Callable
+            Forward operator function.
+        backward_operator : Callable
+            Backward operator function.
+        num_steps : int
+            Number of steps in the ADMM algorithm.
+        num_steps_dc_gd : int
+            Number of steps in the Data Consistency using Gradient Descent step of ADMM.
+        image_init : str
+            Image initialization method. Default: 'sense'.
+        no_parameter_sharing : bool
+            Flag indicating whether parameter sharing is enabled in the denoiser blocks.
+        image_model_architecture : ModelName
+            Image model architecture. Default: ModelName.unet.
+        initializer_channels : tuple[int, ...]
+            Tuple of integers specifying the number of output channels for each convolutional layer in the
+             Lagrange multiplier initializer. Default: (32, 32, 64, 64).
+        initializer_dilations : tuple[int, ...]
+            Tuple of integers specifying the dilation factor for each convolutional layer in the Lagrange multiplier
+            initializer. Default: (1, 1, 2, 4).
+        initializer_multiscale : int
+            Number of multiscale features to include in the  Lagrange multiplier initializer output. Default: 1.
+        initializer_activation : ActivationType
+            Activation type for the Lagrange multiplier initializer. Default: ActivationType.relu.
+        kspace_no_parameter_sharing : bool
+            Flag indicating whether parameter sharing is enabled in the k-space denoiser. Ignored if input for
+            `kspace_model_architecture` is None. Default: True.
+        kspace_model_architecture : ModelName, optional
+            K-space model architecture. Default: None.
+        auxiliary_steps : int
+            Number of auxiliary steps to output. Can be -1 or a positive integer lower or equal to `num_steps`.
+            If -1, it uses all steps.
+        **kwargs: Additional keyword arguments.
+        """
         super().__init__()
         self.num_steps = num_steps
         self.num_steps_dc_gd = num_steps_dc_gd
@@ -202,10 +259,15 @@ class VSharpNet(nn.Module):
 
         self.image_init = image_init
 
+        if not (auxiliary_steps == -1 or 0 < auxiliary_steps <= num_steps):
+            raise ValueError(
+                f"Number of auxiliary steps should be -1 to use all steps or a positive"
+                f" integer <= than `num_steps`. Received {auxiliary_steps}."
+            )
         if auxiliary_steps == -1:
-            self.auxiliary_steps = list(range(num_steps - 1))
+            self.auxiliary_steps = list(range(num_steps))
         else:
-            self.auxiliary_steps = list(range(min(auxiliary_steps, num_steps - 1)))
+            self.auxiliary_steps = list(range(num_steps - min(auxiliary_steps, num_steps), num_steps))
 
         self._coil_dim = 1
         self._complex_dim = -1
@@ -246,21 +308,21 @@ class VSharpNet(nn.Module):
 
         u = self.initializer(x.permute(0, 3, 1, 2)).permute(0, 2, 3, 1)
 
-        for iz in range(self.num_steps):
+        for admm_step in range(self.num_steps):
             if self.kspace_denoiser:
                 kspace_z = self.kspace_denoiser(
                     self.forward_operator(z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims]).permute(0, 3, 1, 2)
                 ).permute(0, 2, 3, 1)
                 kspace_z = self.backward_operator(kspace_z.contiguous(), dim=[_ - 1 for _ in self._spatial_dims])
 
-            z = self.denoiser_blocks[iz if self.no_parameter_sharing else 0](
+            z = self.denoiser_blocks[admm_step if self.no_parameter_sharing else 0](
                 torch.cat(
-                    [z, x, u / self.rho[iz]] + ([self.scale_k * kspace_z] if self.kspace_denoiser else []),
+                    [z, x, u / self.rho[admm_step]] + ([self.scale_k * kspace_z] if self.kspace_denoiser else []),
                     dim=self._complex_dim,
                 ).permute(0, 3, 1, 2)
             ).permute(0, 2, 3, 1)
 
-            for ix in range(self.num_steps_dc_gd):
+            for dc_gd_step in range(self.num_steps_dc_gd):
                 dc = apply_mask(
                     self.forward_operator(expand_operator(x, sensitivity_map, self._coil_dim), dim=self._spatial_dims)
                     - masked_kspace,
@@ -270,13 +332,13 @@ class VSharpNet(nn.Module):
                 dc = self.backward_operator(dc, dim=self._spatial_dims)
                 dc = reduce_operator(dc, sensitivity_map, self._coil_dim)
 
-                x = x - self.learning_rate_eta[ix] * (dc + self.rho[iz] * (x - z) + u)
+                x = x - self.learning_rate_eta[dc_gd_step] * (dc + self.rho[admm_step] * (x - z) + u)
 
             if self.training:
-                if iz in self.auxiliary_steps:
+                if admm_step in self.auxiliary_steps:
                     out.append(x)
 
-            u = u + self.rho[iz] * (x - z)
+            u = u + self.rho[admm_step] * (x - z)
 
             out.append(x)
         return out
