@@ -340,5 +340,4 @@ class VSharpNet(nn.Module):
 
             u = u + self.rho[admm_step] * (x - z)
 
-            out.append(x)
         return out
