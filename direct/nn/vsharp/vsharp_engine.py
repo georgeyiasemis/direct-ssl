@@ -378,7 +378,7 @@ class VSharpNetMixedEngine(MRIModelEngine):
 
                 output_image = output_images[-1]
             else:
-                output_image = T.modulus(output_images[-1])
+                output_image = output_images[-1]
                 output_kspace = T.apply_padding(
                     kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
                     padding=data["padding"],
