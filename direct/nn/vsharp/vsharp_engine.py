@@ -323,6 +323,7 @@ class VSharpNetMixedEngine(MRIModelEngine):
             data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
 
             is_ssl_training = data["is_ssl_training"]
+            print(is_ssl_training)
 
             if is_ssl_training and self.model.training:
                 kspace, mask = data["input_kspace"], data["input_sampling_mask"]
@@ -348,14 +349,15 @@ class VSharpNetMixedEngine(MRIModelEngine):
                         padding=data["padding"],
                     )
                     if is_ssl_training:
-                        # Project predicted k-space onto target k-space
+                        # Project predicted k-space onto target k-space if SSL
                         output_kspace = T.apply_mask(output_kspace, data["target_sampling_mask"], return_mask=False)
 
+                    # Compute k-space loss per auxiliary step
                     loss_dict = self.compute_loss_on_data(
                         loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
                     )
 
-                    # SENSE reconstruction if SSL else modulus
+                    # SENSE reconstruction if SSL else modulus if supervised
                     output_images[i] = T.modulus(
                         T.reduce_operator(
                             self.backward_operator(output_kspace, dim=self._spatial_dims),
@@ -365,11 +367,17 @@ class VSharpNetMixedEngine(MRIModelEngine):
                         if is_ssl_training
                         else output_images[i]
                     )
+
+                    # Compute image loss per auxiliary step
                     loss_dict = self.compute_loss_on_data(
                         loss_dict, loss_fns, data, output_images[i], None, auxiliary_loss_weights[i]
                     )
+
                     loss = sum(loss_dict.values())  # type: ignore
-                    self._scaler.scale(loss).backward()
+
+                self._scaler.scale(loss).backward()
+
+                output_image = output_images[-1]
             else:
                 output_image = T.modulus(output_images[-1])
 
