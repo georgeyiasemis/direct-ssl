@@ -322,8 +322,7 @@ class VSharpNetMixedEngine(MRIModelEngine):
         with autocast(enabled=self.mixed_precision):
             data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
 
-            is_ssl_training = data["is_ssl_training"]
-            print(is_ssl_training)
+            is_ssl_training = data["is_ssl_training"][0]
 
             if is_ssl_training and self.model.training:
                 kspace, mask = data["input_kspace"], data["input_sampling_mask"]
