@@ -561,6 +561,7 @@ class ReconstructionType(str, Enum):
     complex_mod = "complex_mod"
     sense = "sense"
     sense_mod = "sense_mod"
+    ifft = "ifft"
 
 
 class ComputeImageModule(DirectModule):
@@ -584,7 +585,7 @@ class ComputeImageModule(DirectModule):
         backward_operator: callable
             The backward operator, e.g. some form of inverse FFT (centered or uncentered).
         type_reconstruction: ReconstructionType
-            Type of reconstruction. Can be "complex", "complex_mod", "sense", "sense_mod" or "rss".
+            Type of reconstruction. Can be "complex", "complex_mod", "sense", "sense_mod", "rss" or "ifft".
             Default: ReconstructionType.rss.
         """
         super().__init__()
@@ -611,7 +612,9 @@ class ComputeImageModule(DirectModule):
 
         # Get complex-valued data solution
         image = self.backward_operator(kspace_data, dim=self.spatial_dims)
-        if self.type_reconstruction in [
+        if self.type_reconstruction == ReconstructionType.ifft:
+            sample[self.target_key] = image
+        elif self.type_reconstruction in [
             ReconstructionType.complex,
             ReconstructionType.complex_mod,
         ]:
