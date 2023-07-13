@@ -13,8 +13,8 @@ from direct.nn.ssl.mri_models import *
 from direct.engine import DoIterationOutput
 from direct.nn.mri_models import MRIModelEngine
 from direct.nn.ssl.mri_models import SSDUMRIModelEngine
-from direct.utils import detach_dict, dict_to_device
-
+from direct.utils import detach_dict, dict_to_device, normalize_image
+from direct.utils.events import get_event_storage
 
 class LPDNetEngine(MRIModelEngine):
     """LPDNet Engine."""
@@ -320,3 +320,49 @@ class LPDNetMixedEngine(MRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
             data_dict={**loss_dict},
         )
+
+    def log_first_training_example_and_model(self, data):
+        storage = get_event_storage()
+        self.logger.info(f"First case: slice_no: {data['slice_no'][0]}, filename: {data['filename'][0]}.")
+
+        if "sampling_mask" in data:
+            first_sampling_mask = data["sampling_mask"][0][0]
+        elif "input_sampling_mask" in data:  # ssdu
+            first_input_sampling_mask = data["input_sampling_mask"][0][0]
+            first_target_sampling_mask = data["target_sampling_mask"][0][0]
+            storage.add_image("train/input_mask", first_input_sampling_mask[..., 0].unsqueeze(0))
+            storage.add_image("train/target_mask", first_target_sampling_mask[..., 0].unsqueeze(0))
+            first_sampling_mask = first_target_sampling_mask | first_input_sampling_mask
+        elif "theta_sampling_mask" in data:  # dualssl
+            first_theta_sampling_mask = data["theta_sampling_mask"][0][0]
+            first_lambda_sampling_mask = data["lambda_sampling_mask"][0][0]
+            storage.add_image("train/theta_mask", first_theta_sampling_mask[..., 0].unsqueeze(0))
+            storage.add_image("train/lambda_mask", first_lambda_sampling_mask[..., 0].unsqueeze(0))
+            first_sampling_mask = first_theta_sampling_mask | first_lambda_sampling_mask
+        else:  # noisier2noise
+            first_noisier_sampling_mask = data["noisier_sampling_mask"][0][0]
+            storage.add_image("train/noisier_mask", first_noisier_sampling_mask[..., 0].unsqueeze(0))
+            first_sampling_mask = data["sampling_mask"][0][0]
+        first_target = data["target"][0]
+
+        if self.ndim == 3:
+            first_sampling_mask = first_sampling_mask[0]
+            slice_dim = -4
+            num_slices = first_target.shape[slice_dim]
+            first_target = first_target[num_slices // 2]
+        elif self.ndim > 3:
+            raise NotImplementedError
+
+        storage.add_image("train/mask", first_sampling_mask[..., 0].unsqueeze(0))
+        storage.add_image(
+            "train/target",
+            normalize_image(first_target.unsqueeze(0)),
+        )
+
+        if "initial_image" in data:
+            storage.add_image(
+                "train/initial_image",
+                normalize_image(T.modulus(data["initial_image"][0]).unsqueeze(0)),
+            )
+
+        self.write_to_logs()
