@@ -21,8 +21,8 @@ class LPDNetConfig(ModelConfig):
     primal_unet_dropout_probability: float = 0.0
     primal_uformer_patch_size: int = 128
     primal_uformer_embedding_dim: int = 8
-    primal_uformer_encoder_depths: list[int, ...] = [2, 2, 2]
-    primal_uformer_encoder_num_heads: list[int, ...] = [2, 4, 8]
+    primal_uformer_encoder_depths: list[int, ...] = (2, 2, 2)
+    primal_uformer_encoder_num_heads: list[int, ...] = (2, 4, 8)
     primal_uformer_bottleneck_depth: int = 2
     primal_uformer_bottleneck_num_heads: int = 16
     primal_uformer_win_size: int = 8
@@ -37,8 +37,8 @@ class LPDNetConfig(ModelConfig):
     dual_unet_dropout_probability: float = 0.0
     dual_uformer_patch_size: int = 256
     dual_uformer_embedding_dim: int = 32
-    dual_uformer_encoder_depths: list[int, ...] = [2, 2, 2]
-    dual_uformer_encoder_num_heads: list[int, ...] = [2, 4, 8]
+    dual_uformer_encoder_depths: list[int, ...] = (2, 2, 2)
+    dual_uformer_encoder_num_heads: list[int, ...] = (2, 4, 8)
     dual_uformer_bottleneck_depth: int = 2
     dual_uformer_bottleneck_num_heads: int = 16
     dual_uformer_win_size: int = 8
