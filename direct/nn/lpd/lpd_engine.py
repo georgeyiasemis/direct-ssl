@@ -16,6 +16,7 @@ from direct.nn.ssl.mri_models import SSDUMRIModelEngine
 from direct.utils import detach_dict, dict_to_device, normalize_image
 from direct.utils.events import get_event_storage
 
+
 class LPDNetEngine(MRIModelEngine):
     """LPDNet Engine."""
 
@@ -293,7 +294,7 @@ class LPDNetMixedEngine(MRIModelEngine):
                 loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, output_kspace)
 
                 # SENSE reconstruction if SSL else modulus if supervised
-                output_images = T.modulus(
+                output_image = T.modulus(
                     T.reduce_operator(
                         self.backward_operator(output_kspace, dim=self._spatial_dims),
                         data["sensitivity_map"],
@@ -304,7 +305,7 @@ class LPDNetMixedEngine(MRIModelEngine):
                 )
 
                 # Compute image loss
-                loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, output_images, None)
+                loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, output_image, None)
 
                 loss = sum(loss_dict.values())  # type: ignore
 
