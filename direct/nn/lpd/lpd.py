@@ -178,7 +178,7 @@ class LPDNet(nn.Module):
                 num_pool_layers=kwargs.get("primal_unet_num_pool_layers", 4),
                 dropout_probability=kwargs.get("primal_unet_dropout_probability", 0.0),
             )
-        elif dual_model_architecture == "UFORMER":
+        elif primal_model_architecture == "UFORMER":
             uformer = UFormerModel
             primal_model = uformer(
                 in_channels=2 * (num_primal + 1),
