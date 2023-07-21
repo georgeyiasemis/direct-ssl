@@ -95,6 +95,7 @@ class CMRxReconConfig(DatasetConfig):
     slice_data: Optional[tuple[int, int]] = None
     time_data: Optional[tuple[int, int]] = None
 
+
 @dataclass
 class FastMRIConfig(H5SliceConfig):
     pass_attrs: bool = True
