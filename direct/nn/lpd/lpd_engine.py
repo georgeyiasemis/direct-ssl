@@ -279,13 +279,13 @@ class LPDNetMixedEngine(MRIModelEngine):
                 sampling_mask=mask,
                 sensitivity_map=data["sensitivity_map"],
             )
+            # Data consistency
+            output_kspace = T.apply_padding(
+                kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
+                padding=data["padding"],
+            )
 
             if self.model.training:
-                # Data consistency
-                output_kspace = T.apply_padding(
-                    kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
-                    padding=data["padding"],
-                )
                 if is_ssl_training:
                     # Project predicted k-space onto target k-space if SSL
                     output_kspace = T.apply_mask(output_kspace, data["target_sampling_mask"], return_mask=False)
@@ -312,7 +312,9 @@ class LPDNetMixedEngine(MRIModelEngine):
                 self._scaler.scale(loss).backward()
 
             else:
-                output_image = T.modulus(output_image)
+                output_image = T.root_sum_of_squares(
+                    self.backward_operator(output_kspace, dim=self._spatial_dims), dim=self._coil_dim
+                )
 
         loss_dict = detach_dict(loss_dict)  # Detach dict, only used for logging.
 
