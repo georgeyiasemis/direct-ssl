@@ -428,6 +428,8 @@ class CMRxReconDataset(Dataset):
         self.dataset_description = dataset_description
         self.text_description = text_description
 
+        self.kspace_key = kspace_key
+        
         self.data: List[Tuple] = []
 
         self.volume_indices: Dict[pathlib.Path, range] = {}
@@ -476,8 +478,6 @@ class CMRxReconDataset(Dataset):
         self.pass_dictionaries = pass_dictionaries
 
         self.ndim = 2
-
-        self.kspace_key = kspace_key
 
         self.transform = transform
 
