@@ -6,11 +6,13 @@ import bisect
 import contextlib
 import logging
 import pathlib
+import re
 import sys
 import xml.etree.ElementTree as etree  # nosec
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
+import h5py
 import numpy as np
 from omegaconf import DictConfig
 from torch.utils.data import Dataset, IterableDataset
@@ -20,6 +22,7 @@ from direct.data.h5_data import H5SliceData
 from direct.data.sens import simulate_sensitivity_maps
 from direct.types import PathOrString
 from direct.utils import remove_keys, str_to_class
+from direct.utils.dataset import get_filenames_for_datasets
 
 logger = logging.getLogger(__name__)
 
@@ -305,12 +308,11 @@ class FastMRIDataset(H5SliceData):
             text_description=kwargs.get("text_description", None),
             pass_h5s=pass_h5s,
             pass_dictionaries=kwargs.get("pass_dictionaries", None),
-            sensitivity_maps=kwargs.get("sensitivity_maps", None),
         )
-        # if self.sensitivity_maps is not None:
-        #     raise NotImplementedError(
-        #         f"Sensitivity maps are not supported in the current " f"{self.__class__.__name__} class."
-        #     )
+        if self.sensitivity_maps is not None:
+            raise NotImplementedError(
+                f"Sensitivity maps are not supported in the current " f"{self.__class__.__name__} class."
+            )
 
         # TODO: Make exclusive or to give error when one of the two keys is not set.
         # TODO: Convert into mixin, and add support to main image
@@ -396,6 +398,223 @@ class FastMRIDataset(H5SliceData):
         return mask
 
 
+class CMRxReconDataset(Dataset):
+    def __init__(
+        self,
+        data_root: pathlib.Path,
+        transform: Optional[Callable] = None,
+        filenames_filter: Union[List[PathOrString], None] = None,
+        filenames_lists: Union[List[PathOrString], None] = None,
+        filenames_lists_root: Union[PathOrString, None] = None,
+        regex_filter: Optional[str] = None,
+        dataset_description: Optional[Dict[PathOrString, Any]] = None,
+        metadata: Optional[Dict[PathOrString, Dict]] = None,
+        kspace_key: str = "kspace_full",
+        extra_keys: Optional[Tuple] = None,
+        pass_attrs: bool = False,
+        text_description: Optional[str] = None,
+        pass_dictionaries: Optional[Dict[str, Dict]] = None,
+        pass_mats: Optional[Dict[str, List]] = None,
+        slice_data: Optional[tuple[int]] = None,
+        time_data: Optional[tuple[int]] = None,
+    ) -> None:
+        self.logger = logging.getLogger(type(self).__name__)
+
+        self.root = pathlib.Path(data_root)
+        self.filenames_filter = filenames_filter
+
+        self.metadata = metadata
+
+        self.dataset_description = dataset_description
+        self.text_description = text_description
+
+        self.data: List[Tuple] = []
+
+        self.volume_indices: Dict[pathlib.Path, range] = {}
+
+        # If filenames_filter and filenames_lists are given, it will load files in filenames_filter
+        # and filenames_lists will be ignored.
+        if filenames_filter is None:
+            if filenames_lists is not None:
+                if filenames_lists_root is None:
+                    e = "`filenames_lists` is passed but `filenames_lists_root` is None."
+                    self.logger.error(e)
+                    raise ValueError(e)
+                filenames = get_filenames_for_datasets(
+                    lists=filenames_lists, files_root=filenames_lists_root, data_root=data_root
+                )
+                self.logger.info("Attempting to load %s filenames from list(s).", len(filenames))
+            else:
+                self.logger.info("Parsing directory %s for mat files.", self.root)
+                filenames = list(self.root.glob("*.mat"))
+        else:
+            self.logger.info("Attempting to load %s filenames.", len(filenames_filter))
+            filenames = filenames_filter
+
+        filenames = [pathlib.Path(_) for _ in filenames]
+
+        if regex_filter:
+            filenames = [_ for _ in filenames if re.match(regex_filter, str(_))]
+
+        if len(filenames) == 0:
+            warn = (
+                f"Found 0 mat files in directory {self.root}."
+                if not self.text_description
+                else f"Found 0 mat files in directory {self.root} for dataset {self.text_description}."
+            )
+            self.logger.warning(warn)
+        else:
+            self.logger.info("Using %s mat files in %s.", len(filenames), self.root)
+
+        self.parse_filenames_data(
+            filenames, extra_mats=pass_mats, filter_slice=slice_data, filter_time=time_data
+        )  # Collect information on the image masks_dict.
+        self.pass_mats = pass_mats
+
+        self.pass_attrs = pass_attrs
+        self.extra_keys = extra_keys
+        self.pass_dictionaries = pass_dictionaries
+
+        self.ndim = 2
+
+        self.kspace_key = kspace_key
+
+        self.transform = transform
+
+        if self.text_description:
+            self.logger.info("Dataset description: %s.", self.text_description)
+
+    def parse_filenames_data(self, filenames, extra_mats=None, filter_slice=None, filter_time=None):
+        current_frame_number = 0
+        current_slice_number = 0  # This is required to keep track of where a volume is in the dataset
+
+        for idx, filename in enumerate(filenames):
+            if len(filenames) < 5 or idx % (len(filenames) // 5) == 0 or len(filenames) == (idx + 1):
+                self.logger.info(f"Parsing: {(idx + 1) / len(filenames) * 100:.2f}%.")
+            try:
+                kspace_shape = h5py.File(filename, "r")["kspace_full"].shape  # pylint: disable = E1101
+                self.verify_extra_mat_integrity(
+                    filename, kspace_shape, extra_mats=extra_mats
+                )  # pylint: disable = E1101
+            except OSError as exc:
+                self.logger.warning("%s failed with OSError: %s. Skipping...", filename, exc)
+                continue
+
+            num_frames, num_slices = kspace_shape[:2]
+
+            if filter_slice:
+                filter_slice = slice(*filter_slice)
+                admissible_slice_indices = range(*filter_slice.indices(num_slices))
+            else:
+                admissible_slice_indices = range(num_slices)
+
+            if filter_time:
+                filter_time = slice(*filter_time)
+                admissible_frame_indices = range(*filter_time.indices(num_frames))
+            else:
+                admissible_frame_indices = range(num_frames)
+
+            self.data += [
+                (filename, tframe, slc)
+                for tframe in range(num_frames)
+                if tframe in admissible_frame_indices
+                for slc in range(num_slices)
+                if slc in admissible_slice_indices
+            ]
+
+            num_slices = len(admissible_slice_indices)
+            num_frames = len(admissible_frame_indices)
+
+            self.volume_indices[filename] = range(
+                current_slice_number * current_frame_number,
+                current_slice_number * current_frame_number + num_slices * num_frames,
+            )
+
+            current_slice_number += num_slices
+            current_frame_number += num_frames
+
+    @staticmethod
+    def verify_extra_mat_integrity(image_fn, _, extra_mats):
+        if not extra_mats:
+            return
+
+        for key in extra_mats:
+            mat_key, path = extra_mats[key]
+            extra_fn = path / image_fn.name
+            try:
+                with h5py.File(extra_fn, "r") as file:
+                    _ = file[mat_key].shape
+            except (OSError, TypeError) as exc:
+                raise ValueError(f"Reading of {extra_fn} for key {mat_key} failed: {exc}.") from exc
+
+    def __len__(self):
+        return len(self.data)
+
+    def get_slice_data(self, filename, frame_no, slice_no, key, pass_attrs=False, extra_keys=None):
+        extra_data = {}
+        if not filename.exists():
+            raise OSError(f"{filename} does not exist.")
+
+        try:
+            data = h5py.File(filename, "r")
+        except Exception as e:
+            raise Exception(f"Reading filename {filename} caused exception: {e}")
+
+        curr_data = np.array(data[key][frame_no][slice_no])
+
+        if pass_attrs:
+            extra_data["attrs"] = dict(data.attrs)
+
+        if extra_keys:
+            for extra_key in self.extra_keys:
+                if extra_key == "attrs":
+                    raise ValueError("attrs need to be passed by setting `pass_attrs = True`.")
+                extra_data[extra_key] = data[extra_key][()]
+        data.close()
+        return curr_data, extra_data
+
+    def get_num_slices(self, filename):
+        num_slices = self.volume_indices[filename].stop - self.volume_indices[filename].start
+        return num_slices
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        filename, frame_no, slice_no = self.data[idx]
+        filename = pathlib.Path(filename)
+        metadata = None if not self.metadata else self.metadata[filename.name]
+
+        kspace, extra_data = self.get_slice_data(
+            filename, frame_no, slice_no, key=self.kspace_key, pass_attrs=self.pass_attrs, extra_keys=self.extra_keys
+        )
+
+        kspace = kspace["real"] + 1j * kspace["imag"]
+        kspace = np.swapaxes(kspace, -1, -2)
+
+        if kspace.ndim == 2:  # Singlecoil data.
+            kspace = kspace[np.newaxis, ...]
+
+        sample = {"kspace": kspace, "filename": str(filename), "slice_no": slice_no, "frame_no": frame_no}
+
+        if metadata is not None:
+            sample["metadata"] = metadata
+
+        sample.update(extra_data)
+
+        if self.pass_dictionaries:
+            for key in self.pass_dictionaries:
+                if key in sample:
+                    raise ValueError(f"Trying to add key {key} to sample dict, but this key already exists.")
+                sample[key] = self.pass_dictionaries[key][filename.name]
+
+        shape = kspace.shape
+
+        sample["reconstruction_size"] = (int(np.round(shape[-2] / 3)), int(np.round(shape[-1] / 2)), 1)
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample
+
+
 class CalgaryCampinasDataset(H5SliceData):
     """Calgary-Campinas challenge dataset."""
 
@@ -424,7 +643,6 @@ class CalgaryCampinasDataset(H5SliceData):
             text_description=kwargs.get("text_description", None),
             pass_h5s=pass_h5s,
             pass_dictionaries=kwargs.get("pass_dictionaries", None),
-            sensitivity_maps=kwargs.get("sensitivity_maps", None),
         )
 
         if self.sensitivity_maps is not None:

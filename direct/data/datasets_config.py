@@ -14,7 +14,7 @@ from direct.config.defaults import BaseConfig
 
 @dataclass
 class CropTransformConfig(BaseConfig):
-    crop: Optional[Tuple[int, int]] = None
+    crop: Optional[str] = None
     crop_type: Optional[str] = "uniform"
     image_center_crop: bool = False
 
@@ -60,13 +60,6 @@ class TransformsConfig(BaseConfig):
     image_recon_type: str = "rss"
     pad_coils: Optional[int] = None
     use_seed: bool = True
-    # Next attrs are for SSL transforms
-    ssl_transforms: Optional[str] = None
-    mask_split_ratio: Tuple[float, ...] = (0.4,)
-    mask_split_acs_region: Tuple[int, int] = (0, 0)
-    mask_split_keep_acs: Optional[bool] = False
-    mask_split_type: str = "gaussian"
-    mask_split_gaussian_std: float = 3.0
 
 
 @dataclass
@@ -88,6 +81,19 @@ class H5SliceConfig(DatasetConfig):
     filenames_lists: Optional[List[str]] = None
     filenames_lists_root: Optional[str] = None
 
+
+@dataclass
+class CMRxReconConfig(DatasetConfig):
+    regex_filter: Optional[str] = None
+    kspace_context: int = 0
+    pass_mask: bool = False
+    data_root: Optional[str] = None
+    filenames_filter: Optional[List[str]] = None
+    filenames_lists: Optional[List[str]] = None
+    filenames_lists_root: Optional[str] = None
+    kspace_key: str = "kspace_full"
+    slice_data: Optional[tuple[int, int]] = None
+    time_data: Optional[tuple[int, int]] = None
 
 @dataclass
 class FastMRIConfig(H5SliceConfig):
