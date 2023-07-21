@@ -492,7 +492,7 @@ class CMRxReconDataset(Dataset):
             if len(filenames) < 5 or idx % (len(filenames) // 5) == 0 or len(filenames) == (idx + 1):
                 self.logger.info(f"Parsing: {(idx + 1) / len(filenames) * 100:.2f}%.")
             try:
-                kspace_shape = h5py.File(filename, "r")["kspace_full"].shape  # pylint: disable = E1101
+                kspace_shape = h5py.File(filename, "r")[self.kspace_key].shape  # pylint: disable = E1101
                 self.verify_extra_mat_integrity(
                     filename, kspace_shape, extra_mats=extra_mats
                 )  # pylint: disable = E1101
