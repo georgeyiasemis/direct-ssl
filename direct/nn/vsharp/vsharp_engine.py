@@ -137,7 +137,7 @@ class VSharpNetEngine(MRIModelEngine):
                     T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim),
                     dim=self._spatial_dims,
                 ),
-                padding=data["padding"],
+                padding=data.get("padding", None),
             ),
             ~data["sampling_mask"],
             return_mask=False,
@@ -205,7 +205,7 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
                     # Data consistency
                     output_kspace = T.apply_padding(
                         kspace + self._forward_operator(output_images[i], data["sensitivity_map"], ~mask),
-                        padding=data["padding"],
+                        padding=data.get("padding", None),
                     )
                     # Project predicted k-space onto target k-space
                     output_kspace = T.apply_mask(output_kspace, data["target_sampling_mask"], return_mask=False)
@@ -345,7 +345,7 @@ class VSharpNetMixedEngine(MRIModelEngine):
                     # Data consistency
                     output_kspace = T.apply_padding(
                         kspace + self._forward_operator(output_images[i], data["sensitivity_map"], ~mask),
-                        padding=data["padding"],
+                        padding=data.get("padding", None),
                     )
                     if is_ssl_training:
                         # Project predicted k-space onto target k-space if SSL
