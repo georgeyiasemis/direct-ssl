@@ -415,8 +415,6 @@ class CMRxReconDataset(Dataset):
         text_description: Optional[str] = None,
         pass_dictionaries: Optional[Dict[str, Dict]] = None,
         pass_mats: Optional[Dict[str, List]] = None,
-        slice_data: Optional[tuple[int]] = None,
-        time_data: Optional[tuple[int]] = None,
     ) -> None:
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -429,7 +427,7 @@ class CMRxReconDataset(Dataset):
         self.text_description = text_description
 
         self.kspace_key = kspace_key
-        
+
         self.data: List[Tuple] = []
 
         self.volume_indices: Dict[pathlib.Path, range] = {}
@@ -469,7 +467,7 @@ class CMRxReconDataset(Dataset):
             self.logger.info("Using %s mat files in %s.", len(filenames), self.root)
 
         self.parse_filenames_data(
-            filenames, extra_mats=pass_mats, filter_slice=slice_data, filter_time=time_data
+            filenames, extra_mats=pass_mats
         )  # Collect information on the image masks_dict.
         self.pass_mats = pass_mats
 
@@ -484,8 +482,7 @@ class CMRxReconDataset(Dataset):
         if self.text_description:
             self.logger.info("Dataset description: %s.", self.text_description)
 
-    def parse_filenames_data(self, filenames, extra_mats=None, filter_slice=None, filter_time=None):
-        current_frame_number = 0
+    def parse_filenames_data(self, filenames, extra_mats=None):
         current_slice_number = 0  # This is required to keep track of where a volume is in the dataset
 
         for idx, filename in enumerate(filenames):
@@ -500,38 +497,19 @@ class CMRxReconDataset(Dataset):
                 self.logger.warning("%s failed with OSError: %s. Skipping...", filename, exc)
                 continue
 
-            num_frames, num_slices = kspace_shape[:2]
-
-            if filter_slice:
-                filter_slice = slice(*filter_slice)
-                admissible_slice_indices = range(*filter_slice.indices(num_slices))
-            else:
-                admissible_slice_indices = range(num_slices)
-
-            if filter_time:
-                filter_time = slice(*filter_time)
-                admissible_frame_indices = range(*filter_time.indices(num_frames))
-            else:
-                admissible_frame_indices = range(num_frames)
+            num_slices = np.prod(kspace_shape[:2])
 
             self.data += [
-                (filename, tframe, slc)
-                for tframe in range(num_frames)
-                if tframe in admissible_frame_indices
+                (filename, slc)
                 for slc in range(num_slices)
-                if slc in admissible_slice_indices
             ]
 
-            num_slices = len(admissible_slice_indices)
-            num_frames = len(admissible_frame_indices)
-
             self.volume_indices[filename] = range(
-                current_slice_number * current_frame_number,
-                current_slice_number * current_frame_number + num_slices * num_frames,
+                current_slice_number,
+                current_slice_number + num_slices,
             )
 
             current_slice_number += num_slices
-            current_frame_number += num_frames
 
     @staticmethod
     def verify_extra_mat_integrity(image_fn, _, extra_mats):
@@ -550,7 +528,7 @@ class CMRxReconDataset(Dataset):
     def __len__(self):
         return len(self.data)
 
-    def get_slice_data(self, filename, frame_no, slice_no, key, pass_attrs=False, extra_keys=None):
+    def get_slice_data(self, filename, slice_no, key, pass_attrs=False, extra_keys=None):
         extra_data = {}
         if not filename.exists():
             raise OSError(f"{filename} does not exist.")
@@ -560,7 +538,10 @@ class CMRxReconDataset(Dataset):
         except Exception as e:
             raise Exception(f"Reading filename {filename} caused exception: {e}")
 
-        curr_data = np.array(data[key][frame_no][slice_no])
+        curr_data = np.array(data[key][slice_no])
+        shape = curr_data.shape
+
+        curr_data = curr_data.reshape(np.prod(shape[:2]), *shape[2:])
 
         if pass_attrs:
             extra_data["attrs"] = dict(data.attrs)
@@ -578,12 +559,12 @@ class CMRxReconDataset(Dataset):
         return num_slices
 
     def __getitem__(self, idx: int) -> Dict[str, Any]:
-        filename, frame_no, slice_no = self.data[idx]
+        filename, slice_no = self.data[idx]
         filename = pathlib.Path(filename)
         metadata = None if not self.metadata else self.metadata[filename.name]
 
         kspace, extra_data = self.get_slice_data(
-            filename, frame_no, slice_no, key=self.kspace_key, pass_attrs=self.pass_attrs, extra_keys=self.extra_keys
+            filename, slice_no, key=self.kspace_key, pass_attrs=self.pass_attrs, extra_keys=self.extra_keys
         )
 
         kspace = kspace["real"] + 1j * kspace["imag"]
@@ -592,7 +573,7 @@ class CMRxReconDataset(Dataset):
         if kspace.ndim == 2:  # Singlecoil data.
             kspace = kspace[np.newaxis, ...]
 
-        sample = {"kspace": kspace, "filename": str(filename), "slice_no": slice_no, "frame_no": frame_no}
+        sample = {"kspace": kspace, "filename": str(filename), "slice_no": slice_no}
 
         if metadata is not None:
             sample["metadata"] = metadata

@@ -92,9 +92,6 @@ class CMRxReconConfig(DatasetConfig):
     filenames_lists: Optional[List[str]] = None
     filenames_lists_root: Optional[str] = None
     kspace_key: str = "kspace_full"
-    slice_data: Optional[tuple[int, int]] = None
-    time_data: Optional[tuple[int, int]] = None
-
 
 @dataclass
 class FastMRIConfig(H5SliceConfig):
