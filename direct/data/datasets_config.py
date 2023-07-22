@@ -48,7 +48,7 @@ class NormalizationTransformConfig(BaseConfig):
 
 @dataclass
 class TransformsConfig(BaseConfig):
-    masking: MaskingConfig = MaskingConfig()
+    masking: Optional[MaskingConfig] = MaskingConfig()
     cropping: CropTransformConfig = CropTransformConfig()
     random_augmentations: RandomAugmentationTransformsConfig = RandomAugmentationTransformsConfig()
     padding_eps: float = 0.001
@@ -85,13 +85,13 @@ class H5SliceConfig(DatasetConfig):
 @dataclass
 class CMRxReconConfig(DatasetConfig):
     regex_filter: Optional[str] = None
-    kspace_context: int = 0
-    pass_mask: bool = False
     data_root: Optional[str] = None
     filenames_filter: Optional[List[str]] = None
     filenames_lists: Optional[List[str]] = None
     filenames_lists_root: Optional[str] = None
     kspace_key: str = "kspace_full"
+    compute_mask: bool = False
+
 
 @dataclass
 class FastMRIConfig(H5SliceConfig):

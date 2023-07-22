@@ -407,14 +407,12 @@ class CMRxReconDataset(Dataset):
         filenames_lists: Union[List[PathOrString], None] = None,
         filenames_lists_root: Union[PathOrString, None] = None,
         regex_filter: Optional[str] = None,
-        dataset_description: Optional[Dict[PathOrString, Any]] = None,
         metadata: Optional[Dict[PathOrString, Dict]] = None,
         kspace_key: str = "kspace_full",
         extra_keys: Optional[Tuple] = None,
         pass_attrs: bool = False,
         text_description: Optional[str] = None,
-        pass_dictionaries: Optional[Dict[str, Dict]] = None,
-        pass_mats: Optional[Dict[str, List]] = None,
+        compute_mask: bool = False,
     ) -> None:
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -423,7 +421,6 @@ class CMRxReconDataset(Dataset):
 
         self.metadata = metadata
 
-        self.dataset_description = dataset_description
         self.text_description = text_description
 
         self.kspace_key = kspace_key
@@ -466,16 +463,13 @@ class CMRxReconDataset(Dataset):
         else:
             self.logger.info("Using %s mat files in %s.", len(filenames), self.root)
 
-        self.parse_filenames_data(
-            filenames, extra_mats=pass_mats
-        )  # Collect information on the image masks_dict.
-        self.pass_mats = pass_mats
-
+        self.parse_filenames_data(filenames, extra_mats=None)  # Collect information on the image masks_dict.
         self.pass_attrs = pass_attrs
         self.extra_keys = extra_keys
-        self.pass_dictionaries = pass_dictionaries
 
         self.ndim = 2
+
+        self.compute_mask = compute_mask
 
         self.transform = transform
 
@@ -499,10 +493,7 @@ class CMRxReconDataset(Dataset):
 
             num_slices = np.prod(kspace_shape[:2])
 
-            self.data += [
-                (filename, slc)
-                for slc in range(num_slices)
-            ]
+            self.data += [(filename, slc) for slc in range(num_slices)]
 
             self.volume_indices[filename] = range(
                 current_slice_number,
@@ -538,10 +529,10 @@ class CMRxReconDataset(Dataset):
         except Exception as e:
             raise Exception(f"Reading filename {filename} caused exception: {e}")
 
-        curr_data = np.array(data[key][slice_no])
-        shape = curr_data.shape
+        shape = data[key].shape
+        inds = {(i): (k, l) for i, (k, l) in enumerate([(k, l) for k in range(shape[0]) for l in range(shape[1])])}
 
-        curr_data = curr_data.reshape(np.prod(shape[:2]), *shape[2:])
+        curr_data = np.array(data[key][inds[slice_no][0]][inds[slice_no][1]])
 
         if pass_attrs:
             extra_data["attrs"] = dict(data.attrs)
@@ -575,16 +566,19 @@ class CMRxReconDataset(Dataset):
 
         sample = {"kspace": kspace, "filename": str(filename), "slice_no": slice_no}
 
+        if self.compute_mask:
+            nx, ny = kspace.shape[1:]
+            sampling_mask = (kspace.sum(0) != 0)[np.newaxis, ..., np.newaxis]
+            acs_mask = np.zeros((1, nx, ny, 1), dtype=bool)
+            acs_mask[:, :, ny // 2 - 12 : ny // 2 + 12] = True
+
+            sample["sampling_mask"] = sampling_mask
+            sample["acs_mask"] = acs_mask
+
         if metadata is not None:
             sample["metadata"] = metadata
 
         sample.update(extra_data)
-
-        if self.pass_dictionaries:
-            for key in self.pass_dictionaries:
-                if key in sample:
-                    raise ValueError(f"Trying to add key {key} to sample dict, but this key already exists.")
-                sample[key] = self.pass_dictionaries[key][filename.name]
 
         shape = kspace.shape
 
