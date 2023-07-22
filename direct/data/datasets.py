@@ -568,7 +568,7 @@ class CMRxReconDataset(Dataset):
 
         if self.compute_mask:
             nx, ny = kspace.shape[1:]
-            sampling_mask = (kspace.sum(0) != 0)[np.newaxis, ..., np.newaxis]
+            sampling_mask = (np.abs(kspace).sum(0) != 0)[np.newaxis, ..., np.newaxis]
             acs_mask = np.zeros((1, nx, ny, 1), dtype=bool)
             acs_mask[:, :, ny // 2 - 12 : ny // 2 + 12] = True
 
