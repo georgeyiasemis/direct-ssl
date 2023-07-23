@@ -746,8 +746,11 @@ class MRIModelEngine(Engine):
         sensitivity_map: torch.Tensor
             Normalized and refined sensitivity maps of shape (batch, coil, height,  width, complex=2).
         """
-        # Some things can be done with the sensitivity map here, e.g. apply a u-net
-        if "sensitivity_model" in self.models:
+        
+        num_coils = sensitivity_map.shape[self._coil_dim]
+
+        # Pass to sensitivity model only if multiple coils
+        if num_coils > 1 and "sensitivity_model" in self.models:
             # Move channels to first axis
             sensitivity_map = sensitivity_map.permute(
                 (0, 1, 4, 2, 3)
