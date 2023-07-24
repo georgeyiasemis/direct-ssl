@@ -295,7 +295,10 @@ class VSharpNet(nn.Module):
             Output image of shape (N, height, width, complex=2).
         """
         out = []
-        if self.image_init == "sense":
+
+        multicoil = masked_kspace.shape[self._coil_dim] > 1
+
+        if self.image_init == "sense" and multicoil:
             x = reduce_operator(
                 coil_data=self.backward_operator(masked_kspace, dim=self._spatial_dims),
                 sensitivity_map=sensitivity_map,
@@ -324,13 +327,18 @@ class VSharpNet(nn.Module):
 
             for dc_gd_step in range(self.num_steps_dc_gd):
                 dc = apply_mask(
-                    self.forward_operator(expand_operator(x, sensitivity_map, self._coil_dim), dim=self._spatial_dims)
+                    self.forward_operator(
+                        expand_operator(x, sensitivity_map, self._coil_dim)
+                        if multicoil
+                        else x.unsqueeze(self._coil_dim),
+                        dim=self._spatial_dims,
+                    )
                     - masked_kspace,
                     sampling_mask,
                     return_mask=False,
                 )
                 dc = self.backward_operator(dc, dim=self._spatial_dims)
-                dc = reduce_operator(dc, sensitivity_map, self._coil_dim)
+                dc = reduce_operator(dc, sensitivity_map, self._coil_dim) if multicoil else dc.squeeze(self._coil_dim)
 
                 x = x - self.learning_rate_eta[dc_gd_step] * (dc + self.rho[admm_step] * (x - z) + u)
 

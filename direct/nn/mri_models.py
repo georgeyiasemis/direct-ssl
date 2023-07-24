@@ -746,11 +746,11 @@ class MRIModelEngine(Engine):
         sensitivity_map: torch.Tensor
             Normalized and refined sensitivity maps of shape (batch, coil, height,  width, complex=2).
         """
-        
-        num_coils = sensitivity_map.shape[self._coil_dim]
+
+        multicoil = sensitivity_map.shape[self._coil_dim] > 1
 
         # Pass to sensitivity model only if multiple coils
-        if num_coils > 1 and "sensitivity_model" in self.models:
+        if multicoil and "sensitivity_model" in self.models:
             # Move channels to first axis
             sensitivity_map = sensitivity_map.permute(
                 (0, 1, 4, 2, 3)
@@ -1076,9 +1076,13 @@ class MRIModelEngine(Engine):
         return loss_dict
 
     def _forward_operator(self, image, sensitivity_map, sampling_mask):
+        multicoil = sensitivity_map.shape[self._coil_dim]
+
         return T.apply_mask(
             self.forward_operator(
-                T.expand_operator(image, sensitivity_map, dim=self._coil_dim),
+                T.expand_operator(image, sensitivity_map, dim=self._coil_dim)
+                if multicoil
+                else image.unsqueeze(self._coil_dim),
                 dim=self._spatial_dims,
             ),
             sampling_mask,
@@ -1086,10 +1090,15 @@ class MRIModelEngine(Engine):
         )
 
     def _backward_operator(self, kspace, sensitivity_map, sampling_mask):
-        return T.reduce_operator(
-            self.backward_operator(T.apply_mask(kspace, sampling_mask, return_mask=False), dim=self._spatial_dims),
-            sensitivity_map,
-            dim=self._coil_dim,
+        multicoil = kspace.shape[self._coil_dim]
+
+        backward = self.backward_operator(
+            T.apply_mask(kspace, sampling_mask, return_mask=False), dim=self._spatial_dims
+        )
+        return (
+            T.reduce_operator(backward, sensitivity_map, dim=self._coil_dim)
+            if multicoil
+            else backward.squeeze(self._coil_dim)
         )
 
 

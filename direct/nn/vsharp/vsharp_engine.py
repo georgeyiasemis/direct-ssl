@@ -124,6 +124,8 @@ class VSharpNetEngine(MRIModelEngine):
     def forward_function(self, data: Dict[str, Any]) -> Tuple[torch.Tensor, None]:
         data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
 
+        multicoil = data["sensitivity_map"].shape[self._coil_dim] > 1
+
         output_images = self.model(
             masked_kspace=data["masked_kspace"],
             sampling_mask=data["sampling_mask"],
@@ -134,7 +136,9 @@ class VSharpNetEngine(MRIModelEngine):
         output_kspace = data["masked_kspace"] + T.apply_mask(
             T.apply_padding(
                 self.forward_operator(
-                    T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim),
+                    T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim)
+                    if multicoil
+                    else output_image.unsqueeze(self._coil_dim),
                     dim=self._spatial_dims,
                 ),
                 padding=data.get("padding", None),
@@ -186,6 +190,8 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
         mask = data["input_sampling_mask"] if self.model.training else data["sampling_mask"]
         loss_dict = {k: torch.tensor([0.0], dtype=data["target"].dtype).to(self.device) for k in loss_fns.keys()}
 
+        multicoil = kspace.shape[self._coil_dim] > 1
+
         with autocast(enabled=self.mixed_precision):
             data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
 
@@ -214,12 +220,11 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
                     )
 
                     # SENSE reconstruction
+                    backward = self.backward_operator(output_kspace, dim=self._spatial_dims)
                     output_images[i] = T.modulus(
-                        T.reduce_operator(
-                            self.backward_operator(output_kspace, dim=self._spatial_dims),
-                            data["sensitivity_map"],
-                            self._coil_dim,
-                        )
+                        T.reduce_operator(backward, data["sensitivity_map"], self._coil_dim)
+                        if multicoil
+                        else backward.squeeze(self._coil_dim)
                     )
                     loss_dict = self.compute_loss_on_data(
                         loss_dict, loss_fns, data, output_images[i], None, auxiliary_loss_weights[i]
@@ -356,15 +361,8 @@ class VSharpNetMixedEngine(MRIModelEngine):
                         loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
                     )
 
-                    # SENSE reconstruction if SSL else modulus if supervised
-                    output_images[i] = T.modulus(
-                        T.reduce_operator(
-                            self.backward_operator(output_kspace, dim=self._spatial_dims),
-                            data["sensitivity_map"],
-                            self._coil_dim,
-                        )
-                        if is_ssl_training
-                        else output_images[i]
+                    output_images[i] = T.root_sum_of_squares(
+                        self.backward_operator(output_kspace, dim=self._spatial_dims), dim=self._coil_dim
                     )
 
                     # Compute image loss per auxiliary step
@@ -378,7 +376,15 @@ class VSharpNetMixedEngine(MRIModelEngine):
 
                 output_image = output_images[-1]
             else:
-                output_image = T.modulus(output_images[-1])
+                output_image = output_images[-1]
+                # Data consistency
+                output_kspace = T.apply_padding(
+                    kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
+                    padding=data.get("padding", None),
+                )
+                output_image = T.root_sum_of_squares(
+                    self.backward_operator(output_kspace, dim=self._spatial_dims), dim=self._coil_dim
+                )
 
         loss_dict = detach_dict(loss_dict)  # Detach dict, only used for logging.
 
