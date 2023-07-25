@@ -103,10 +103,6 @@ class VSharpNetEngine(MRIModelEngine):
                     loss_dict, loss_fns, data, output_images[i], None, auxiliary_loss_weights[i]
                 )
 
-            loss_dict = self.compute_loss_on_data(
-                loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
-            )
-
             loss = sum(loss_dict.values())  # type: ignore
 
         if self.model.training:
