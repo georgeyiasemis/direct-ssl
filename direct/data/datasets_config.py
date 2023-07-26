@@ -91,6 +91,7 @@ class CMRxReconConfig(DatasetConfig):
     filenames_lists_root: Optional[str] = None
     kspace_key: str = "kspace_full"
     compute_mask: bool = False
+    extra_keys: Optional[List[str]] = None
 
 
 @dataclass
