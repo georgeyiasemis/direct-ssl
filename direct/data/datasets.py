@@ -575,13 +575,30 @@ class CMRxReconDataset(Dataset):
             sample["sampling_mask"] = sampling_mask
             sample["acs_mask"] = acs_mask
 
+        elif any("mask" in key for key in extra_data):
+            mask_keys = [key for key in extra_data if "mask" in key]
+            # This will load up randomly a mask if more than one keys
+            mask_key = np.random.choice(mask_keys)
+
+            sampling_mask = np.array(extra_data[mask_key]).astype(bool)
+            for key in mask_keys:
+                del extra_data[key]
+
+            ny, nx = sampling_mask.shape
+            sampling_mask = np.swapaxes(sampling_mask, -1, -2)[np.newaxis, ..., np.newaxis]
+
+            acs_mask = np.zeros((1, nx, ny, 1), dtype=bool)
+            acs_mask[:, :, ny // 2 - 12 : ny // 2 + 12] = True
+
+            sample["sampling_mask"] = sampling_mask
+            sample["acs_mask"] = acs_mask
+
         if metadata is not None:
             sample["metadata"] = metadata
 
         sample.update(extra_data)
 
         shape = kspace.shape
-
         sample["reconstruction_size"] = (int(np.round(shape[-2] / 3)), int(np.round(shape[-1] / 2)), 1)
 
         if self.transform:
