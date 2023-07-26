@@ -103,6 +103,10 @@ class VSharpNetEngine(MRIModelEngine):
                     loss_dict, loss_fns, data, output_images[i], None, auxiliary_loss_weights[i]
                 )
 
+            loss_dict = self.compute_loss_on_data(
+                loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
+            )
+
             loss = sum(loss_dict.values())  # type: ignore
 
         if self.model.training:
@@ -125,22 +129,20 @@ class VSharpNetEngine(MRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
         )  # shape (batch, height,  width, complex[=2])
 
-        # output_image = output_images[-1]
-        # output_kspace = data["masked_kspace"] + T.apply_mask(
-        #     T.apply_padding(
-        #         self.forward_operator(
-        #             T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim)
-        #             if multicoil
-        #             else output_image.unsqueeze(self._coil_dim),
-        #             dim=self._spatial_dims,
-        #         ),
-        #         padding=data.get("padding", None),
-        #     ),
-        #     ~data["sampling_mask"],
-        #     return_mask=False,
-        # )
+        output_image = output_images[-1]
+        output_kspace = data["masked_kspace"] + T.apply_mask(
+            T.apply_padding(
+                self.forward_operator(
+                    T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim),
+                    dim=self._spatial_dims,
+                ),
+                padding=data.get("padding", None),
+            ),
+            ~data["sampling_mask"],
+            return_mask=False,
+        )
 
-        return output_images, None
+        return output_images, output_kspace
 
 
 class VSharpNetSSDUEngine(SSDUMRIModelEngine):
