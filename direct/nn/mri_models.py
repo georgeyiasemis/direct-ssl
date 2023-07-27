@@ -1076,13 +1076,9 @@ class MRIModelEngine(Engine):
         return loss_dict
 
     def _forward_operator(self, image, sensitivity_map, sampling_mask):
-        multicoil = sensitivity_map.shape[self._coil_dim]
-
         return T.apply_mask(
             self.forward_operator(
-                T.expand_operator(image, sensitivity_map, dim=self._coil_dim)
-                if multicoil
-                else image.unsqueeze(self._coil_dim),
+                T.expand_operator(image, sensitivity_map, dim=self._coil_dim),
                 dim=self._spatial_dims,
             ),
             sampling_mask,
@@ -1090,16 +1086,10 @@ class MRIModelEngine(Engine):
         )
 
     def _backward_operator(self, kspace, sensitivity_map, sampling_mask):
-        multicoil = kspace.shape[self._coil_dim]
-
         backward = self.backward_operator(
             T.apply_mask(kspace, sampling_mask, return_mask=False), dim=self._spatial_dims
         )
-        return (
-            T.reduce_operator(backward, sensitivity_map, dim=self._coil_dim)
-            if multicoil
-            else backward.squeeze(self._coil_dim)
-        )
+        return T.reduce_operator(backward, sensitivity_map, dim=self._coil_dim)
 
 
 def _crop_volume(
