@@ -1322,11 +1322,11 @@ class ToTensor(DirectTransform):
             sample["sensitivity_map"] = T.to_tensor(sample["sensitivity_map"]).float()
         if "target" in sample:
             # Shape:    2D: (coil, height, width), 3D: (coil, slice, height, width)
-            sample["target"] = sample["target"]
+            sample["target"] = torch.from_numpy(sample["target"])
         if "sampling_mask" in sample:
-            sample["sampling_mask"] = torch.from_numpy(sample["sampling_mask"]).byte()
+            sample["sampling_mask"] = torch.from_numpy(sample["sampling_mask"]).bool()
         if "acs_mask" in sample:
-            sample["acs_mask"] = torch.from_numpy(sample["acs_mask"])
+            sample["acs_mask"] = torch.from_numpy(sample["acs_mask"]).bool()
         if "scaling_factor" in sample:
             sample["scaling_factor"] = torch.tensor(sample["scaling_factor"]).float()
         if "loglikelihood_scaling" in sample:
