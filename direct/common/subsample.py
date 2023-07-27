@@ -393,6 +393,7 @@ class CartesianEquispacedMaskFunc(FastMRIEquispacedMaskFunc):
 
             num_low_freqs, acceleration = self.choose_acceleration()
 
+            num_low_freqs = int(num_low_freqs)
             mask = self.center_mask_func(num_cols, num_low_freqs)
 
             if return_acs:
