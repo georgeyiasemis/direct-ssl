@@ -46,8 +46,6 @@ class MRIVarSplitNet(nn.Module):
         image_init: str = InitType.sense,
         no_parameter_sharing: bool = True,
         image_model_architecture: ModelName = ModelName.unet,
-        kspace_no_parameter_sharing: bool = True,
-        kspace_model_architecture: Optional[ModelName] = None,
         **kwargs,
     ):
         """Inits :class:`MRIVarSplitNet`."""
@@ -56,38 +54,20 @@ class MRIVarSplitNet(nn.Module):
         self.num_steps_dc = num_steps_dc
 
         self.image_nets = nn.ModuleList()
-        if kspace_model_architecture:
-            self.kspace_nets = nn.ModuleList()
-        else:
-            self.kspace_nets = None
 
         self.no_parameter_sharing = no_parameter_sharing
 
         if image_model_architecture not in ["unet", "normunet", "resnet", "didn", "conv", "uformer"]:
             raise ValueError(f"Invalid value {image_model_architecture} for `image_model_architecture`.")
-        if kspace_model_architecture not in ["unet", "normunet", "resnet", "didn", "conv", "uformer", None]:
-            raise ValueError(f"Invalid value {kspace_model_architecture} for `kspace_model_architecture`.")
 
         image_model, image_model_kwargs = _get_model_config(
             image_model_architecture,
-            in_channels=4,
-            out_channels=2,
+            in_channels=COMPLEX_SIZE * 2,
+            out_channels=COMPLEX_SIZE,
             **{k.replace("image_", ""): v for (k, v) in kwargs.items() if "image_" in k},
         )
         for _ in range(self.num_steps_reg if self.no_parameter_sharing else 1):
             self.image_nets.append(image_model(**image_model_kwargs))
-
-        if kspace_model_architecture:
-            self.kspace_no_parameter_sharing = kspace_no_parameter_sharing
-            kspace_model, kspace_model_kwargs = _get_model_config(
-                kspace_model_architecture,
-                in_channels=COMPLEX_SIZE * 2 + 1,
-                **{k.replace("kspace_", ""): v for (k, v) in kwargs.items() if "kspace_" in k},
-            )
-            for _ in range(self.num_steps_reg if self.kspace_no_parameter_sharing else 1):
-                self.kspace_nets.append(kspace_model(**kspace_model_kwargs))
-            self.learning_rate_k = nn.Parameter(torch.ones(num_steps_reg, requires_grad=True))
-            nn.init.trunc_normal_(self.learning_rate_k, 0.0, 1.0, 0.0)
 
         self.learning_rate_reg = nn.Parameter(torch.ones(num_steps_reg, requires_grad=True))
         nn.init.trunc_normal_(self.learning_rate_reg, 0.0, 1.0, 0.0)
@@ -150,29 +130,6 @@ class MRIVarSplitNet(nn.Module):
             z = self.learning_rate_reg[iz] * self.image_nets[iz if self.no_parameter_sharing else 0](
                 torch.cat([z, self.mu * (z - image)], dim=self._complex_dim).permute(0, 3, 1, 2)
             ).permute(0, 2, 3, 1)
-
-            if self.kspace_nets is not None:
-                kspace_z = torch.cat(
-                    [
-                        self.forward_operator(
-                            expand_operator(z, sensitivity_map, self._coil_dim),
-                            dim=self._spatial_dims,
-                        ),
-                        masked_kspace.clone(),
-                        torch.repeat_interleave(sampling_mask, masked_kspace.size(self._coil_dim), self._coil_dim),
-                    ],
-                    self._complex_dim,
-                )
-                kspace_z = self.compute_model_per_coil(
-                    self.kspace_nets[iz if self.kspace_no_parameter_sharing else 0],
-                    kspace_z.permute(0, 1, 4, 2, 3),
-                ).permute(0, 1, 3, 4, 2)
-
-                z = z + self.learning_rate_k[iz] * reduce_operator(
-                    coil_data=self.backward_operator(kspace_z.contiguous(), dim=self._spatial_dims),
-                    sensitivity_map=sensitivity_map,
-                    dim=self._coil_dim,
-                )
 
             for ix in range(self.num_steps_dc):
                 mul = scaling_factor * expand_operator(image, sensitivity_map, self._coil_dim)
