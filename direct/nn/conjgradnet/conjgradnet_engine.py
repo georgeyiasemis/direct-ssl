@@ -186,7 +186,7 @@ class ConjGradNetMixedEngine(MRIModelEngine):
                     # Project predicted k-space onto target k-space if SSL
                     output_kspace = T.apply_mask(output_kspace, data["target_sampling_mask"], return_mask=False)
                     # RSS if SSL
-                    output_image = T.root_sum_of_squares(output_image, self._coil_dim)
+                    output_image = T.root_sum_of_squares(output_kspace, self._coil_dim)
                 else:
                     # Modulus if supervised
                     output_image = T.modulus(output_image)
