@@ -151,7 +151,6 @@ class ConjGradNetMixedEngine(MRIModelEngine):
         loss_fns: Optional[Dict[str, Callable]] = None,
         regularizer_fns: Optional[Dict[str, Callable]] = None,
     ) -> DoIterationOutput:
-
         if loss_fns is None:
             loss_fns = {}
 
