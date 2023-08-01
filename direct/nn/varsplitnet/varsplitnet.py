@@ -93,7 +93,6 @@ class MRIVarSplitNet(nn.Module):
         masked_kspace: torch.Tensor,
         sensitivity_map: torch.Tensor,
         sampling_mask: torch.Tensor,
-        scaling_factor: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Computes forward pass of :class:`MRIVarSplitNet`.
 
@@ -120,10 +119,6 @@ class MRIVarSplitNet(nn.Module):
         else:
             image = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
 
-        if scaling_factor is None:
-            scaling_factor = torch.tensor([1.0], dtype=masked_kspace.dtype).to(masked_kspace.device)
-        scaling_factor = scaling_factor.reshape(-1, *(torch.ones(len(masked_kspace.shape) - 1).int()))
-
         z = image.clone()
 
         for iz in range(self.num_steps_reg):
@@ -132,13 +127,13 @@ class MRIVarSplitNet(nn.Module):
             ).permute(0, 2, 3, 1)
 
             for ix in range(self.num_steps_dc):
-                mul = scaling_factor * expand_operator(image, sensitivity_map, self._coil_dim)
+                mul = expand_operator(image, sensitivity_map, self._coil_dim)
                 mr_forward = torch.where(
                     sampling_mask == 0,
                     torch.tensor([0.0], dtype=masked_kspace.dtype).to(masked_kspace.device),
                     self.forward_operator(mul, dim=self._spatial_dims),
                 )
-                error = mr_forward - scaling_factor * torch.where(
+                error = mr_forward - torch.where(
                     sampling_mask == 0,
                     torch.tensor([0.0], dtype=masked_kspace.dtype).to(masked_kspace.device),
                     masked_kspace,

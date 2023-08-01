@@ -14,11 +14,12 @@ from direct.nn.mri_models import MRIModelEngine
 from direct.nn.ssl.mri_models import (
     DualSSL2MRIModelEngine,
     DualSSLMRIModelEngine,
+    MixedLearningEngine,
     N2NMRIModelEngine,
     SSDUMRIModelEngine,
 )
-from direct.utils import detach_dict, dict_to_device, normalize_image
-from direct.utils.events import get_event_storage
+from direct.types import TensorOrNone
+from direct.utils import detach_dict, dict_to_device
 
 
 class MRIVarSplitNetEngine(MRIModelEngine):
@@ -70,7 +71,6 @@ class MRIVarSplitNetEngine(MRIModelEngine):
             masked_kspace=data["masked_kspace"],
             sampling_mask=data["sampling_mask"],
             sensitivity_map=data["sensitivity_map"],
-            scaling_factor=None,
         )  # shape (batch, height,  width, complex[=2])
 
         output_kspace = None
@@ -107,12 +107,11 @@ class MRIVarSplitNetSSDUEngine(SSDUMRIModelEngine):
             masked_kspace=kspace,
             sensitivity_map=data["sensitivity_map"],
             sampling_mask=mask,
-            scaling_factor=None,
         )
 
         output_kspace = T.apply_padding(
             kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
-            padding=data["padding"],
+            padding=data.get("padding", None),
         )
         return None, output_kspace
 
@@ -215,12 +214,11 @@ class MRIVarSplitNetN2NEngine(N2NMRIModelEngine):
             masked_kspace=data["noisier_kspace"] if self.model.training else data["masked_kspace"],
             sensitivity_map=data["sensitivity_map"],
             sampling_mask=data["noisier_sampling_mask"] if self.model.training else data["sampling_mask"],
-            scaling_factor=None,
         )
         return output_image, None
 
 
-class MRIVarSplitNetMixedEngine(MRIModelEngine):
+class MRIVarSplitNetMixedEngine(MixedLearningEngine):
     def __init__(
         self,
         cfg: BaseConfig,
@@ -241,8 +239,30 @@ class MRIVarSplitNetMixedEngine(MRIModelEngine):
             **models,
         )
 
-    def forward_function(self, data: Dict[str, Any]) -> None:
-        pass
+    def forward_function(self, data: Dict[str, Any]) -> Tuple[torch.Tensor, TensorOrNone]:
+        is_ssl_training = data["is_ssl_training"][0]
+
+        if is_ssl_training and self.model.training:
+            kspace, mask = data["input_kspace"], data["input_sampling_mask"]
+        else:
+            kspace, mask = data["masked_kspace"], data["sampling_mask"]
+
+        output_image = self.model(
+            masked_kspace=kspace,
+            sampling_mask=mask,
+            sensitivity_map=data["sensitivity_map"],
+        )
+        # Data consistency
+        output_kspace = (
+            T.apply_padding(
+                kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
+                padding=data.get("padding", None),
+            )
+            if self.model.training
+            else None
+        )
+
+        return output_image, output_kspace
 
     def _do_iteration(
         self,
@@ -260,31 +280,22 @@ class MRIVarSplitNetMixedEngine(MRIModelEngine):
         with autocast(enabled=self.mixed_precision):
             data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
 
-            is_ssl_training = data["is_ssl_training"][0]
-
-            if is_ssl_training and self.model.training:
-                kspace, mask = data["input_kspace"], data["input_sampling_mask"]
-            else:
-                kspace, mask = data["masked_kspace"], data["sampling_mask"]
-
-            output_image = self.model(
-                masked_kspace=kspace,
-                sampling_mask=mask,
-                sensitivity_map=data["sensitivity_map"],
-            )
+            output_image, output_kspace = self.forward_function(data)
 
             if self.model.training:
-                # Data consistency
-                output_kspace = T.apply_padding(
-                    kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
-                    padding=data["padding"],
-                )
-
+                is_ssl_training = data["is_ssl_training"][0]
                 if is_ssl_training:
                     # Project predicted k-space onto target k-space if SSL
                     output_kspace = T.apply_mask(output_kspace, data["target_sampling_mask"], return_mask=False)
-                    # RSS if SSL
-                    output_image = T.root_sum_of_squares(output_kspace, self._coil_dim)
+                    # # RSS if SSL
+                    # output_image = T.root_sum_of_squares(output_kspace, self._coil_dim)
+                    output_image = T.modulus(
+                        T.reduce_operator(
+                            self.backward_operator(output_kspace, dim=self._spatial_dims),
+                            data["sensitivity_map"],
+                            self._coil_dim,
+                        )
+                    )
                 else:
                     # Modulus if supervised
                     output_image = T.modulus(output_image)
@@ -308,49 +319,3 @@ class MRIVarSplitNetMixedEngine(MRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
             data_dict={**loss_dict},
         )
-
-    def log_first_training_example_and_model(self, data):
-        storage = get_event_storage()
-        self.logger.info(f"First case: slice_no: {data['slice_no'][0]}, filename: {data['filename'][0]}.")
-
-        if "sampling_mask" in data:
-            first_sampling_mask = data["sampling_mask"][0][0]
-        elif "input_sampling_mask" in data:  # ssdu
-            first_input_sampling_mask = data["input_sampling_mask"][0][0]
-            first_target_sampling_mask = data["target_sampling_mask"][0][0]
-            storage.add_image("train/input_mask", first_input_sampling_mask[..., 0].unsqueeze(0))
-            storage.add_image("train/target_mask", first_target_sampling_mask[..., 0].unsqueeze(0))
-            first_sampling_mask = first_target_sampling_mask | first_input_sampling_mask
-        elif "theta_sampling_mask" in data:  # dualssl
-            first_theta_sampling_mask = data["theta_sampling_mask"][0][0]
-            first_lambda_sampling_mask = data["lambda_sampling_mask"][0][0]
-            storage.add_image("train/theta_mask", first_theta_sampling_mask[..., 0].unsqueeze(0))
-            storage.add_image("train/lambda_mask", first_lambda_sampling_mask[..., 0].unsqueeze(0))
-            first_sampling_mask = first_theta_sampling_mask | first_lambda_sampling_mask
-        else:  # noisier2noise
-            first_noisier_sampling_mask = data["noisier_sampling_mask"][0][0]
-            storage.add_image("train/noisier_mask", first_noisier_sampling_mask[..., 0].unsqueeze(0))
-            first_sampling_mask = data["sampling_mask"][0][0]
-        first_target = data["target"][0]
-
-        if self.ndim == 3:
-            first_sampling_mask = first_sampling_mask[0]
-            slice_dim = -4
-            num_slices = first_target.shape[slice_dim]
-            first_target = first_target[num_slices // 2]
-        elif self.ndim > 3:
-            raise NotImplementedError
-
-        storage.add_image("train/mask", first_sampling_mask[..., 0].unsqueeze(0))
-        storage.add_image(
-            "train/target",
-            normalize_image(first_target.unsqueeze(0)),
-        )
-
-        if "initial_image" in data:
-            storage.add_image(
-                "train/initial_image",
-                normalize_image(T.modulus(data["initial_image"][0]).unsqueeze(0)),
-            )
-
-        self.write_to_logs()

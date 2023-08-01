@@ -18,7 +18,13 @@ from direct.types import TensorOrNone
 from direct.utils import detach_dict, dict_to_device, normalize_image, reduce_list_of_dicts
 from direct.utils.events import get_event_storage
 
-__all__ = ["SSDUMRIModelEngine", "DualSSLMRIModelEngine", "DualSSL2MRIModelEngine", "N2NMRIModelEngine"]
+__all__ = [
+    "SSDUMRIModelEngine",
+    "DualSSLMRIModelEngine",
+    "DualSSL2MRIModelEngine",
+    "MixedLearningEngine",
+    "N2NMRIModelEngine",
+]
 
 
 class SSLMRIModelEngine(MRIModelEngine):
@@ -67,7 +73,9 @@ class SSLMRIModelEngine(MRIModelEngine):
         storage = get_event_storage()
         self.logger.info(f"First case: slice_no: {data['slice_no'][0]}, filename: {data['filename'][0]}.")
 
-        if "input_sampling_mask" in data:  # ssdu
+        if "sampling_mask" in data:  # supervised (eg JSSL)
+            first_sampling_mask = data["sampling_mask"][0][0]
+        elif "input_sampling_mask" in data:  # ssdu
             first_input_sampling_mask = data["input_sampling_mask"][0][0]
             first_target_sampling_mask = data["target_sampling_mask"][0][0]
             storage.add_image("train/input_mask", first_input_sampling_mask[..., 0].unsqueeze(0))
@@ -667,3 +675,38 @@ class N2NMRIModelEngine(SSLMRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
             data_dict={**loss_dict} if self.model.training else {},
         )
+
+
+class MixedLearningEngine(SSLMRIModelEngine):
+    def __init__(
+        self,
+        cfg: BaseConfig,
+        model: nn.Module,
+        device: str,
+        forward_operator: Optional[Callable] = None,
+        backward_operator: Optional[Callable] = None,
+        mixed_precision: bool = False,
+        **models: nn.Module,
+    ):
+        super().__init__(
+            cfg,
+            model,
+            device,
+            forward_operator=forward_operator,
+            backward_operator=backward_operator,
+            mixed_precision=mixed_precision,
+            **models,
+        )
+
+    @abstractmethod
+    def forward_function(self, data: Dict[str, Any]) -> Tuple[TensorOrNone, TensorOrNone]:
+        raise NotImplementedError("Must be implemented by child class.")
+
+    @abstractmethod
+    def _do_iteration(
+        self,
+        data: Dict[str, Any],
+        loss_fns: Optional[Dict[str, Callable]] = None,
+        regularizer_fns: Optional[Dict[str, Callable]] = None,
+    ) -> DoIterationOutput:
+        raise NotImplementedError("Must be implemented by child class.")
