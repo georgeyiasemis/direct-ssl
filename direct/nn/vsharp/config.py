@@ -116,3 +116,21 @@ class VSharpNetConfig(ModelConfig):
     kspace_vision_transformer_locality_strength: float = 1.0
     kspace_vision_transformer_use_pos_embedding: bool = True
     kspace_vision_transformer_normalized: bool = True
+
+
+@dataclass
+class VSharpNet3DConfig(ModelConfig):
+    num_steps: int = 8
+    num_steps_dc_gd: int = 6
+    image_init: str = "sense"
+    no_parameter_sharing: bool = True
+    auxiliary_steps: int = -1
+    initializer_channels: tuple[int, ...] = (32, 32, 64, 64)
+    initializer_dilations: tuple[int, ...] = (1, 1, 2, 4)
+    initializer_multiscale: int = 1
+    initializer_activation: ActivationType = ActivationType.prelu
+    unet_num_filters: int = 32
+    unet_num_pool_layers: int = 4
+    unet_dropout: float = 0.0
+    unet_cwn_conv: bool = False
+    unet_norm: bool = False
