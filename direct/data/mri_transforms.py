@@ -127,12 +127,14 @@ class RandomRotation(DirectTransform):
             for key in self.keys_to_rotate:
                 if key in sample:
                     value = T.view_as_complex(sample[key].clone())
-                    sample[key] = T.view_as_real(torch.rot90(value, k=k, dims=(1, 2)))
+                    sample[key] = T.view_as_real(torch.rot90(value, k=k, dims=(-2, -1)))
 
             # If rotated by multiples of (n + 1) * 90 degrees, reconstruction size also needs to change
             reconstruction_size = sample.get("reconstruction_size", None)
             if reconstruction_size and (k % 2) == 1:
-                sample["reconstruction_size"] = reconstruction_size[:2][::-1] + reconstruction_size[2:]
+                sample["reconstruction_size"] = (
+                    reconstruction_size[:-3] + reconstruction_size[-3:-1][::-1] + reconstruction_size[-1:]
+                )
 
         return sample
 
@@ -188,13 +190,13 @@ class RandomFlip(DirectTransform):
         """
         if random.SystemRandom().random() <= self.p:
             dims = (
-                (1,)
+                (-2,)
                 if self.flip == "horizontal"
-                else (2,)
+                else (-1,)
                 if self.flip == "vertical"
-                else (1, 2)
+                else (-2, -1)
                 if self.flip == "both"
-                else (random.SystemRandom().choice([1, 2]),)
+                else (random.SystemRandom().choice([-2, -1]),)
             )
 
             for key in self.keys_to_flip:
@@ -271,8 +273,7 @@ class CreateSamplingMask(DirectTransform):
         sample["sampling_mask"] = sampling_mask
 
         if self.return_acs:
-            kspace_shape = sample["kspace"].shape[1:]
-            sample["acs_mask"] = self.mask_func(shape=kspace_shape, seed=seed, return_acs=True)
+            sample["acs_mask"] = self.mask_func(shape=shape, seed=seed, return_acs=True)
 
         return sample
 
@@ -419,15 +420,20 @@ class CropKspace(DirectTransform):
             Cropped and masked sample.
         """
 
-        kspace = sample["kspace"]  # shape (coil, height, width, complex=2)
+        kspace = sample["kspace"]  # shape (coil, [slice], height, width, complex=2)
 
-        backprojected_kspace = self.backward_operator(kspace, dim=(1, 2))  # shape (coil, height, width, complex=2)
+        dim = (1, 2) if kspace.ndim == 4 else (2, 3)
+
+        backprojected_kspace = self.backward_operator(kspace, dim=dim)  # shape (coil, height, width, complex=2)
 
         if isinstance(self.crop, str):
             assert self.crop in sample, f"Not found {self.crop} key in sample."
-            crop_shape = sample[self.crop][:2]
+            crop_shape = sample[self.crop][:-1]
         else:
-            crop_shape = self.crop
+            if kspace.ndim == 5 and len(self.crop) == 2:
+                crop_shape = (kspace.shape[1],) + self.crop
+            else:
+                crop_shape = self.crop
 
         cropper_data_list = [backprojected_kspace]
         if "sensitivity_map" in sample:
@@ -450,7 +456,7 @@ class CropKspace(DirectTransform):
 
         # Compute new k-space for the cropped_backprojected_kspace
         # shape (coil, new_height, new_width, complex=2)
-        sample["kspace"] = self.forward_operator(cropped_backprojected_kspace, dim=(1, 2))  # The cropped kspace
+        sample["kspace"] = self.forward_operator(cropped_backprojected_kspace, dim=dim)  # The cropped kspace
 
         return sample
 
@@ -508,6 +514,9 @@ class ComputeZeroPadding(DirectTransform):
         """
 
         kspace = T.modulus(sample[self.kspace_key]).sum(coil_dim)
+        if kspace.ndim == 4:
+            # Assumes that slice dim is 0
+            kspace = kspace.sum(0)
         padding = (kspace < torch.mean(kspace) * self.eps).to(kspace.device).unsqueeze(coil_dim).unsqueeze(-1)
 
         sample[self.padding_key] = padding
@@ -609,9 +618,9 @@ class ComputeImageModule(DirectModule):
             "rss", "complex_mod" or "sense_mod", and of shape(\*spatial_dims, complex_dim=2) otherwise.
         """
         kspace_data = sample[self.kspace_key]
-
+        dim = (2, 3) if kspace_data.ndim == 5 else (3, 4)
         # Get complex-valued data solution
-        image = self.backward_operator(kspace_data, dim=self.spatial_dims)
+        image = self.backward_operator(kspace_data, dim=dim)
         if self.type_reconstruction == ReconstructionType.ifft:
             sample[self.target_key] = image
         elif self.type_reconstruction in [
@@ -678,11 +687,12 @@ class EstimateBodyCoilImage(DirectTransform):
         # We need to create an ACS mask based on the shape of this kspace, as it can be cropped.
 
         seed = None if not self.use_seed else tuple(map(ord, str(sample["filename"])))
-        kspace_shape = sample["kspace"].shape[1:]
+        kspace_shape = sample["kspace"].shape[coil_dim + 1 :]
         acs_mask = self.mask_func(shape=kspace_shape, seed=seed, return_acs=True)
 
         kspace = acs_mask * kspace + 0.0
-        acs_image = self.backward_operator(kspace, dim=(1, 2))
+        dim = (1, 2) if kspace.ndim == 4 else (2, 3)
+        acs_image = self.backward_operator(kspace, dim=dim)
 
         sample["body_coil_image"] = T.root_sum_of_squares(acs_image, dim=coil_dim)
         return sample
@@ -807,8 +817,9 @@ class EstimateSensitivityMapModule(DirectModule):
             kspace_acs = kspace_data * sample["acs_mask"] * gaussian_mask + 0.0
 
         # Get complex-valued data solution
-        # Shape (batch, coil, height, width, complex=2)
-        acs_image = self.backward_operator(kspace_acs, dim=(2, 3))
+        # Shape (batch, [slice], coil, height, width, complex=2)
+        dim = (2, 3) if kspace_data.ndim == 5 else (3, 4)
+        acs_image = self.backward_operator(kspace_acs, dim=dim)
 
         return acs_image
 
@@ -845,12 +856,18 @@ class EstimateSensitivityMapModule(DirectModule):
             # Shape (batch, coil, height, width, complex=2)
             sensitivity_map = T.safe_divide(acs_image, acs_image_rss)
         elif self.type_of_map == "key_rss_estimate":
-            image = self.backward_operator(sample[self.kspace_key], dim=self.spatial_dims)
+            dim = (2, 3) if sample[self.kspace_key].ndim == 5 else (3, 4)
+            image = self.backward_operator(sample[self.kspace_key], dim=dim)
             image_rss = (
                 T.root_sum_of_squares(image, dim=self.coil_dim).unsqueeze(self.coil_dim).unsqueeze(self.complex_dim)
             )
             sensitivity_map = T.safe_divide(image, image_rss)
         else:
+            if sample[self.kspace_key].ndim == 5:
+                raise NotImplementedError(
+                    "EstimateSensitivityMapModule is not yet implemented for "
+                    "Espirit sensitivity map estimation for 3D data."
+                )
             sensitivity_map = self.espirit_calibrator(sample)
 
         sensitivity_map_norm = torch.sqrt(
