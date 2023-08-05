@@ -489,12 +489,14 @@ class CMRxReconDataset(Dataset):
             if len(filenames) < 5 or idx % (len(filenames) // 5) == 0 or len(filenames) == (idx + 1):
                 self.logger.info(f"Parsing: {(idx + 1) / len(filenames) * 100:.2f}%.")
             try:
+                if not filename.exists():
+                    raise OSError(f"{filename} does not exist.")
                 kspace_shape = h5py.File(filename, "r")[self.kspace_key].shape  # pylint: disable = E1101
                 self.verify_extra_mat_integrity(
                     filename, kspace_shape, extra_mats=extra_mats
                 )  # pylint: disable = E1101
-            except OSError as exc:
-                self.logger.warning("%s failed with OSError: %s. Skipping...", filename, exc)
+            except Exception as exc:
+                self.logger.warning("%s failed with Exception: %s. Skipping...", filename, exc)
                 continue
 
             if self.kspace_context is None:
@@ -526,7 +528,7 @@ class CMRxReconDataset(Dataset):
             try:
                 with h5py.File(extra_fn, "r") as file:
                     _ = file[mat_key].shape
-            except (OSError, TypeError) as exc:
+            except Exception as exc:
                 raise ValueError(f"Reading of {extra_fn} for key {mat_key} failed: {exc}.") from exc
 
     def __len__(self):
