@@ -92,6 +92,7 @@ class CMRxReconConfig(DatasetConfig):
     kspace_key: str = "kspace_full"
     compute_mask: bool = False
     extra_keys: Optional[List[str]] = None
+    kspace_context: Optional[str] = None
 
 
 @dataclass
