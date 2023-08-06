@@ -183,12 +183,12 @@ class UnetModel3d(nn.Module):
 
         if sum(inp_pad) != 0:
             output = output[
-                     :,
-                     :,
-                     inp_pad[4]: output.shape[2] - inp_pad[5],
-                     inp_pad[2]: output.shape[3] - inp_pad[3],
-                     inp_pad[0]: output.shape[4] - inp_pad[1]
-                     ]
+                :,
+                :,
+                inp_pad[4] : output.shape[2] - inp_pad[5],
+                inp_pad[2] : output.shape[3] - inp_pad[3],
+                inp_pad[0] : output.shape[4] - inp_pad[1],
+            ]
 
         return output
 
@@ -314,8 +314,9 @@ class NormUnetModel3d(nn.Module):
 
         return output
 
+
 def pad_to_pow_of_2(inp, k):
-    diffs = [_ - 2 ** k for _ in inp.shape[2:]]
+    diffs = [_ - 2**k for _ in inp.shape[2:]]
     padding = [0, 0, 0, 0, 0, 0]
     for i, diff in enumerate(diffs[::-1]):
         if diff < 1:
