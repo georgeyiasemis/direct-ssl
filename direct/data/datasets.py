@@ -413,6 +413,7 @@ class CMRxReconDataset(Dataset):
         pass_attrs: bool = False,
         text_description: Optional[str] = None,
         compute_mask: bool = False,
+        kspace_context: Optional[str] = None,
     ) -> None:
         self.logger = logging.getLogger(type(self).__name__)
 
@@ -428,6 +429,13 @@ class CMRxReconDataset(Dataset):
         self.data: List[Tuple] = []
 
         self.volume_indices: Dict[pathlib.Path, range] = {}
+
+        if kspace_context not in [None, "slice", "time"]:
+            raise ValueError(f"Attribute `kspace_context` can be None for 2D data or `slice` or `time` for 3D.")
+
+        self.kspace_context = kspace_context
+
+        self.ndim = 2 if self.kspace_context is None else 3
 
         # If filenames_filter and filenames_lists are given, it will load files in filenames_filter
         # and filenames_lists will be ignored.
@@ -483,15 +491,24 @@ class CMRxReconDataset(Dataset):
             if len(filenames) < 5 or idx % (len(filenames) // 5) == 0 or len(filenames) == (idx + 1):
                 self.logger.info(f"Parsing: {(idx + 1) / len(filenames) * 100:.2f}%.")
             try:
+                if not filename.exists():
+                    raise OSError(f"{filename} does not exist.")
                 kspace_shape = h5py.File(filename, "r")[self.kspace_key].shape  # pylint: disable = E1101
                 self.verify_extra_mat_integrity(
                     filename, kspace_shape, extra_mats=extra_mats
                 )  # pylint: disable = E1101
-            except OSError as exc:
-                self.logger.warning("%s failed with OSError: %s. Skipping...", filename, exc)
+            except Exception as exc:
+                self.logger.warning("%s failed with Exception: %s. Skipping...", filename, exc)
                 continue
 
-            num_slices = np.prod(kspace_shape[:2])
+            if self.kspace_context is None:
+                num_slices = np.prod(kspace_shape[:2])
+            elif self.kspace_context == "slice":
+                # Slice dimension second
+                num_slices = kspace_shape[0]
+            else:
+                # Time dimension first
+                num_slices = kspace_shape[1]
 
             self.data += [(filename, slc) for slc in range(num_slices)]
 
@@ -513,7 +530,7 @@ class CMRxReconDataset(Dataset):
             try:
                 with h5py.File(extra_fn, "r") as file:
                     _ = file[mat_key].shape
-            except (OSError, TypeError) as exc:
+            except Exception as exc:
                 raise ValueError(f"Reading of {extra_fn} for key {mat_key} failed: {exc}.") from exc
 
     def __len__(self):
@@ -530,9 +547,16 @@ class CMRxReconDataset(Dataset):
             raise Exception(f"Reading filename {filename} caused exception: {e}")
 
         shape = data[key].shape
-        inds = {(i): (k, l) for i, (k, l) in enumerate([(k, l) for k in range(shape[0]) for l in range(shape[1])])}
-
-        curr_data = np.array(data[key][inds[slice_no][0]][inds[slice_no][1]])
+        if self.kspace_context is None:
+            inds = {(i): (k, l) for i, (k, l) in enumerate([(k, l) for k in range(shape[0]) for l in range(shape[1])])}
+            ind = inds[slice_no]
+            curr_data = np.array(data[key][ind[0]][ind[1]])
+        elif self.kspace_context == "slice":
+            # Slice dimension
+            curr_data = np.array(data[key][slice_no])
+        else:
+            # Time dimension
+            curr_data = np.array(data[key][:, slice_no])
 
         if pass_attrs:
             extra_data["attrs"] = dict(data.attrs)
@@ -567,13 +591,14 @@ class CMRxReconDataset(Dataset):
         sample = {"kspace": kspace, "filename": str(filename), "slice_no": slice_no}
 
         if self.compute_mask:
-            nx, ny = kspace.shape[1:]
-            sampling_mask = (np.abs(kspace).sum(0) != 0)[np.newaxis, ..., np.newaxis]
-            acs_mask = np.zeros((1, nx, ny, 1), dtype=bool)
-            acs_mask[:, :, ny // 2 - 12 : ny // 2 + 12] = True
+            nx, ny = kspace.shape[-2:]
+            sampling_mask = np.abs(kspace).sum(tuple(range(len(kspace.shape) - 2))) != 0
+            assert tuple(sampling_mask.shape) == (nx, ny)
+            acs_mask = np.zeros((nx, ny), dtype=bool)
+            acs_mask[:, ny // 2 - 12 : ny // 2 + 12] = True
 
-            sample["sampling_mask"] = sampling_mask
-            sample["acs_mask"] = acs_mask
+            sample["sampling_mask"] = sampling_mask[np.newaxis, ..., np.newaxis]
+            sample["acs_mask"] = acs_mask[np.newaxis, ..., np.newaxis]
 
         elif any("mask" in key for key in extra_data):
             mask_keys = [key for key in extra_data if "mask" in key]
@@ -585,13 +610,17 @@ class CMRxReconDataset(Dataset):
                 del extra_data[key]
 
             ny, nx = sampling_mask.shape
-            sampling_mask = np.swapaxes(sampling_mask, -1, -2)[np.newaxis, ..., np.newaxis]
+            sampling_mask = np.swapaxes(sampling_mask, -1, -2)
 
-            acs_mask = np.zeros((1, nx, ny, 1), dtype=bool)
-            acs_mask[:, :, ny // 2 - 12 : ny // 2 + 12] = True
+            acs_mask = np.zeros((nx, ny), dtype=bool)
+            acs_mask[:, ny // 2 - 12 : ny // 2 + 12] = True
 
-            sample["sampling_mask"] = sampling_mask
-            sample["acs_mask"] = acs_mask
+            sample["sampling_mask"] = sampling_mask[np.newaxis, ..., np.newaxis]
+            sample["acs_mask"] = acs_mask[np.newaxis, ..., np.newaxis]
+
+        if self.kspace_context and "sampling_mask" in sample:
+            sample["sampling_mask"] = sample["sampling_mask"][np.newaxis]
+            sample["acs_mask"] = sample["acs_mask"][np.newaxis]
 
         if metadata is not None:
             sample["metadata"] = metadata
@@ -600,6 +629,12 @@ class CMRxReconDataset(Dataset):
 
         shape = kspace.shape
         sample["reconstruction_size"] = (int(np.round(shape[-2] / 3)), int(np.round(shape[-1] / 2)), 1)
+        if self.kspace_context:
+            # Add context dimension in reconstruction size without any crop
+            context_size = shape[0]
+            sample["reconstruction_size"] = (context_size,) + sample["reconstruction_size"]
+            # If context put coil dim first
+            sample["kspace"] = np.swapaxes(sample["kspace"], 0, 1)
 
         if self.transform:
             sample = self.transform(sample)
