@@ -32,6 +32,7 @@ from direct.functionals import (
     SNRLoss,
     SobelGradL1Loss,
     SobelGradL2Loss,
+    SSIM3DLoss,
     SSIMLoss,
 )
 from direct.types import TensorOrNone
@@ -355,6 +356,44 @@ class MRIModelEngine(Engine):
             data_range = torch.tensor([target_abs.max()], device=target_abs.device)
 
             ssim_loss = SSIMLoss().to(source_abs.device).forward(source_abs, target_abs, data_range=data_range)
+
+            return ssim_loss
+
+        def ssim_3d_loss(
+            source: torch.Tensor,
+            target: torch.Tensor,
+            reduction: str = "mean",
+            reconstruction_size: Optional[Tuple] = None,
+        ) -> torch.Tensor:
+            """Calculate SSIM3D loss given source image and target image.
+
+            Parameters
+            ----------
+            source: torch.Tensor
+                Source tensor of shape (batch, height, width, [complex=2]).
+            target: torch.Tensor
+                Target tensor of shape (batch, height, width, [complex=2]).
+            reduction: str
+                Reduction type. Can be "sum" or "mean".
+            reconstruction_size: Optional[Tuple]
+                Reconstruction size to center crop. Default: None.
+
+            Returns
+            -------
+            ssim_loss: torch.Tensor
+                SSIM loss.
+            """
+            resolution = get_resolution(reconstruction_size)
+            if reduction != "mean":
+                raise AssertionError(
+                    f"SSIM loss can only be computed with reduction == 'mean'." f" Got reduction == {reduction}."
+                )
+            if self.ndim != 3:
+                raise AssertionError(f"SSIM3D loss is only implemented for 3D data..")
+            source_abs, target_abs = _crop_volume(source, target, resolution)
+            data_range = torch.tensor([target_abs.max()], device=target_abs.device)
+
+            ssim_loss = SSIM3DLoss().to(source_abs.device).forward(source_abs, target_abs, data_range=data_range)
 
             return ssim_loss
 
@@ -686,6 +725,8 @@ class MRIModelEngine(Engine):
                 loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, l2_loss)
             elif loss_fn == "ssim_loss":
                 loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, ssim_loss)
+            elif loss_fn == "ssim_3d_loss":
+                loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, ssim_3d_loss)
             elif loss_fn == "grad_l1_loss":
                 loss_dict[loss_fn] = multiply_function(curr_loss.multiplier, grad_l1_loss)
             elif loss_fn == "grad_l2_loss":
@@ -948,7 +989,6 @@ class MRIModelEngine(Engine):
                 metric_name: metric_fn(target_for_eval, volume_for_eval).clone()
                 for metric_name, metric_fn in volume_metrics.items()
             }
-            del volume_for_eval, target_for_eval
             curr_metrics_string = ", ".join([f"{x}: {float(y)}" for x, y in curr_metrics.items()])
             self.logger.info("Metrics for %s: %s", filename, curr_metrics_string)
             # TODO: Path can be tricky if it is not unique (e.g. image.h5)
