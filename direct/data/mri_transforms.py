@@ -436,7 +436,7 @@ class CropKspace(DirectTransform):
             if kspace.ndim == 5 and len(self.crop) == 2:
                 crop_shape = (kspace.shape[1],) + tuple(self.crop)
             else:
-                crop_shape = self.crop
+                crop_shape = tuple(self.crop)
 
         cropper_data_list = [backprojected_kspace]
         if "sensitivity_map" in sample:
@@ -456,6 +456,11 @@ class CropKspace(DirectTransform):
             sample["sensitivity_map"] = sensitivity_map
         else:
             cropped_backprojected_kspace = cropped_output
+
+        if "sampling_mask" in sample:
+            sample["sampling_mask"] = T.complex_center_crop(
+                sample["sampling_mask"], (1,) + tuple(crop_shape)[1:] if kspace.ndim == 5 else crop_shape
+            )
 
         # Compute new k-space for the cropped_backprojected_kspace
         # shape (coil, [slice], new_height, new_width, complex=2)
