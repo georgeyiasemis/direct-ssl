@@ -780,7 +780,7 @@ class MRIModelEngine(Engine):
         multicoil = sensitivity_map.shape[self._coil_dim] > 1
 
         # Pass to sensitivity model only if multiple coils
-        if multicoil and "sensitivity_model" in self.models:
+        if multicoil and ("sensitivity_model" in self.models or "sensitivity_model_3d" in self.models):
             # Move channels to first axis
             sensitivity_map = sensitivity_map.permute(
                 (0, 1, 4, 2, 3) if self.ndim == 2 else (0, 1, 5, 2, 3, 4)
@@ -789,13 +789,16 @@ class MRIModelEngine(Engine):
             if self.ndim == 2:
                 sensitivity_map = self.compute_model_per_coil("sensitivity_model", sensitivity_map)
             else:
-                sensitivity_map = torch.stack(
-                    [
-                        self.compute_model_per_coil("sensitivity_model", sensitivity_map[:, :, :, _])
-                        for _ in range(sensitivity_map.shape[3])
-                    ],
-                    dim=3,
-                )
+                if "sensitivity_model_3d" in self.models:
+                    sensitivity_map = self.compute_model_per_coil("sensitivity_model_3d", sensitivity_map)
+                else:
+                    sensitivity_map = torch.stack(
+                        [
+                            self.compute_model_per_coil("sensitivity_model", sensitivity_map[:, :, :, _])
+                            for _ in range(sensitivity_map.shape[3])
+                        ],
+                        dim=3,
+                    )
             sensitivity_map = sensitivity_map.permute(
                 (0, 1, 3, 4, 2) if self.ndim == 2 else (0, 1, 3, 4, 5, 2)
             )  # has channel last: shape (batch, coil, [slice], height,  width, complex=2)
