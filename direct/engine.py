@@ -435,7 +435,7 @@ class Engine(ABC, DataDimensionality):
                 )  # type: ignore
                 batch_size = 1
             else:
-                batch_size = (self.cfg.validation.batch_size,)  # type: ignore
+                batch_size = self.cfg.validation.batch_size  # type: ignore
             curr_batch_sampler = self.build_batch_sampler(
                 curr_validation_dataset,
                 batch_size=batch_size,
