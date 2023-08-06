@@ -431,7 +431,7 @@ class CropKspace(DirectTransform):
             crop_shape = sample[self.crop][:-1]
         else:
             if kspace.ndim == 5 and len(self.crop) == 2:
-                crop_shape = (kspace.shape[1],) + self.crop
+                crop_shape = (kspace.shape[1],) + tuple(self.crop)
             else:
                 crop_shape = self.crop
 
