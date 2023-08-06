@@ -514,6 +514,9 @@ class ComputeZeroPadding(DirectTransform):
         """
 
         kspace = T.modulus(sample[self.kspace_key]).sum(coil_dim)
+        if kspace.ndim == 4:
+            # Assumes that slice dim is 0
+            kspace = kspace.sum(0)
         padding = (kspace < torch.mean(kspace) * self.eps).to(kspace.device).unsqueeze(coil_dim).unsqueeze(-1)
 
         sample[self.padding_key] = padding

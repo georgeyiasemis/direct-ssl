@@ -475,8 +475,6 @@ class CMRxReconDataset(Dataset):
         self.pass_attrs = pass_attrs
         self.extra_keys = extra_keys
 
-        self.ndim = 2
-
         self.compute_mask = compute_mask
 
         self.transform = transform

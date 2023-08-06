@@ -428,10 +428,10 @@ class Engine(ABC, DataDimensionality):
             curr_dataset_name = curr_validation_dataset.text_description
             self.logger.info("Evaluating: %s...", curr_dataset_name)
             self.logger.info("Building dataloader for dataset: %s.", curr_dataset_name)
-            if self.ndim == 3 and self.cfg.validation.batch_size > 1:
+            if self.ndim == 3 and self.cfg.validation.batch_size > 1:  # type: ignore
                 self.logger.warning(
                     f"Batch size for inference of 3D data must be 1. "
-                    f"Received `batch_size`={self.cfg.validation.batch_size} . Overwriting with 1."  # type: ignore
+                    f"Received `batch_size` = {self.cfg.validation.batch_size}. Overwriting with 1."  # type: ignore
                 )  # type: ignore
                 batch_size = 1
             else:
