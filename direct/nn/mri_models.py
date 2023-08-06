@@ -753,12 +753,22 @@ class MRIModelEngine(Engine):
         if multicoil and "sensitivity_model" in self.models:
             # Move channels to first axis
             sensitivity_map = sensitivity_map.permute(
-                (0, 1, 4, 2, 3)
+                (0, 1, 4, 2, 3) if self.ndim == 2 else (0, 1, 5, 2, 3, 4)
             )  # shape (batch, coil, complex=2, height,  width)
 
-            sensitivity_map = self.compute_model_per_coil("sensitivity_model", sensitivity_map).permute(
-                (0, 1, 3, 4, 2)
-            )  # has channel last: shape (batch, coil, height,  width, complex=2)
+            if self.ndim == 2:
+                sensitivity_map = self.compute_model_per_coil("sensitivity_model", sensitivity_map)
+            else:
+                sensitivity_map = torch.stack(
+                    [
+                        self.compute_model_per_coil("sensitivity_model", sensitivity_map[:, :, :, z])
+                        for z in range(sensitivity_map.shape[3])
+                    ],
+                    dim=3,
+                )
+            sensitivity_map = sensitivity_map.permute(
+                (0, 1, 3, 4, 2) if self.ndim == 2 else (0, 1, 3, 4, 5, 2)
+            )  # has channel last: shape (batch, coil, [slice], height,  width, complex=2)
 
         # The sensitivity map needs to be normalized such that
         # So \sum_{i \in \text{coils}} S_i S_i^* = 1
