@@ -255,7 +255,7 @@ class CreateSamplingMask(DirectTransform):
             Sample with `sampling_mask` key.
         """
         if not self.shape:
-            shape = sample["kspace"].shape[1:]
+            shape = sample["kspace"].shape[-3:]
         elif any(_ is None for _ in self.shape):  # Allow None as values.
             kspace_shape = list(sample["kspace"].shape[1:-1])
             shape = tuple(_ if _ else kspace_shape[idx] for idx, _ in enumerate(self.shape)) + (2,)
@@ -266,10 +266,13 @@ class CreateSamplingMask(DirectTransform):
 
         sampling_mask = self.mask_func(shape=shape, seed=seed, return_acs=False)
 
+        if sample["kspace"].ndim == 5:
+            sampling_mask = sampling_mask.unsqueeze(0)
+
         if "padding" in sample:
             sampling_mask = T.apply_padding(sampling_mask, sample["padding"])
 
-        # Shape (1, height, width, 1)
+        # Shape (1, [1]. height, width, 1)
         sample["sampling_mask"] = sampling_mask
 
         if self.return_acs:
@@ -512,13 +515,15 @@ class ComputeZeroPadding(DirectTransform):
         sample : Dict[str, Any]
             Dict sample containing key `padding_key`.
         """
-
+        shape = sample[self.kspace_key].shape
         kspace = T.modulus(sample[self.kspace_key]).sum(coil_dim)
-        if kspace.ndim == 4:
+        if len(shape) == 5:
             # Assumes that slice dim is 0
             kspace = kspace.sum(0)
-        padding = (kspace < torch.mean(kspace) * self.eps).to(kspace.device).unsqueeze(coil_dim).unsqueeze(-1)
-
+        padding = (kspace < torch.mean(kspace) * self.eps).to(kspace.device)
+        if len(shape) == 5:
+            padding = padding.unsqueeze(0)
+        padding = padding.unsqueeze(coil_dim).unsqueeze(-1)
         sample[self.padding_key] = padding
 
         return sample
