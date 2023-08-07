@@ -88,7 +88,7 @@ class SSIM3DLoss(nn.Module):
         win_size_z = self.win_size if X.size(2) >= self.win_size else X.size(2)
 
         NP = win_size_z * self.win_size**2
-        w = torch.ones(1, 1, win_size_z, self.win_size, self.win_size) / NP
+        w = torch.ones(1, 1, win_size_z, self.win_size, self.win_size, device=X.device) / NP
         cov_norm = NP / (NP - 1)
 
         ux = F.conv3d(X, w)
