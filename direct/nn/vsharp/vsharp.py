@@ -543,6 +543,8 @@ class VSharpNet3D(nn.Module):
         masked_kspace: torch.Tensor,
         sensitivity_map: torch.Tensor,
         sampling_mask: torch.Tensor,
+        init_images: Optional[list[torch.Tensor, torch.Tensor, torch.Tensor]] = None,
+        steps: Optional[list[int]] = None,
     ) -> list[torch.Tensor]:
         """Computes forward pass of :class:`MRIVarSplitNet`.
 
@@ -553,27 +555,50 @@ class VSharpNet3D(nn.Module):
         sensitivity_map: torch.Tensor
             Sensitivity map of shape (N, coil, height, width, complex=2). Default: None.
         sampling_mask: torch.Tensor
+        init_images : list[torch.Tensor, torch.Tensor, torch.Tensor], optional
+            Images to initialize algorithm. If None, they will be computed.
+        steps : list[int], optional
+            Denoiser indices to perform algorithm.
 
         Returns
         -------
         image: torch.Tensor
             Output image of shape (N, slice, height, width, complex=2).
         """
+        x = None
+        z = None
+        u = None
+
+        if init_images is not None:
+            x, z, u = init_images
+
         out = []
-        if self.image_init == "sense":
-            x = reduce_operator(
-                coil_data=self.backward_operator(masked_kspace, dim=self._spatial_dims),
-                sensitivity_map=sensitivity_map,
-                dim=self._coil_dim,
-            )
+
+        if x is None:
+            if self.image_init == "sense":
+                x = reduce_operator(
+                    coil_data=self.backward_operator(masked_kspace, dim=self._spatial_dims),
+                    sensitivity_map=sensitivity_map,
+                    dim=self._coil_dim,
+                )
+            else:
+                x = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
+
+            z = x.clone()
+
+            u = self.initializer(x.permute(0, 4, 1, 2, 3)).permute(0, 2, 3, 4, 1)
+
+        if steps is None:
+            optim_steps = list(range(self.num_steps))
         else:
-            x = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
+            if not all(step <= self.num_steps - 1 for step in steps):
+                raise ValueError(
+                    f"All numbers of steps should be < num_steps. Received `steps` = {steps} "
+                    f"but model's `num_steps` = {self.num_steps}."
+                )
+            optim_steps = steps
 
-        z = x.clone()
-
-        u = self.initializer(x.permute(0, 4, 1, 2, 3)).permute(0, 2, 3, 4, 1)
-
-        for admm_step in range(self.num_steps):
+        for admm_step in optim_steps:
             z = self.denoiser_blocks[admm_step if self.no_parameter_sharing else 0](
                 torch.cat(
                     [z, x, u / self.rho[admm_step]],
@@ -598,4 +623,4 @@ class VSharpNet3D(nn.Module):
 
             u = u + self.rho[admm_step] * (x - z)
 
-        return out
+        return out, z, u

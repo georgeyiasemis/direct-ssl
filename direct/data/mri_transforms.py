@@ -1718,6 +1718,7 @@ def build_supervised_mri_transforms(
                 random_crop_sampler_use_seed=use_seed,
             )
         ]
+    mri_transforms += [AddBooleanKeysModule(["uncropped"], [True if crop is None else False])]
     if random_rotation:
         mri_transforms += [
             RandomRotation(
