@@ -121,6 +121,8 @@ class MRIVarSplitNet(nn.Module):
 
         z = image.clone()
 
+        out = []
+
         for iz in range(self.num_steps_reg):
             z = self.learning_rate_reg[iz] * self.image_nets[iz if self.no_parameter_sharing else 0](
                 torch.cat([z, self.mu * (z - image)], dim=self._complex_dim).permute(0, 3, 1, 2)
@@ -143,7 +145,9 @@ class MRIVarSplitNet(nn.Module):
 
                 image = image - self.learning_rate_dc[ix] * (dc + self.mu * (image - z))
 
-        return image
+            out.append(image)
+
+        return out
 
     def compute_model_per_coil(self, model: nn.Module, data: torch.Tensor) -> torch.Tensor:
         """Performs forward pass of model per coil.
