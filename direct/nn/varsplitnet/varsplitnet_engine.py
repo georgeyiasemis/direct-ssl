@@ -108,7 +108,7 @@ class MRIVarSplitNetSSDUEngine(SSDUMRIModelEngine):
             sensitivity_map=data["sensitivity_map"],
             sampling_mask=mask,
         )
-
+        # Data consistency
         output_kspace = T.apply_padding(
             kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
             padding=data.get("padding", None),
@@ -253,13 +253,15 @@ class MRIVarSplitNetMixedEngine(MixedLearningEngine):
             sensitivity_map=data["sensitivity_map"],
         )
         # Data consistency
-        output_kspace = (
-            T.apply_padding(
-                kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
-                padding=data.get("padding", None),
-            )
-            if self.model.training
-            else None
+        output_kspace = T.apply_padding(
+            kspace + self._forward_operator(output_image, data["sensitivity_map"], ~mask),
+            padding=data.get("padding", None),
+        )
+        # Data consistent image
+        output_image = T.reduce_operator(
+            self.backward_operator(output_kspace, dim=self._spatial_dims),
+            data["sensitivity_map"],
+            self._coil_dim,
         )
 
         return output_image, output_kspace
