@@ -38,6 +38,8 @@ class RandomAugmentationTransformsConfig(BaseConfig):
     random_flip: bool = False
     random_flip_type: Optional[str] = "random"
     random_flip_probability: Optional[float] = 0.5
+    random_reverse: bool = False
+    random_reverse_probability: Optional[float] = 0.5
 
 
 @dataclass

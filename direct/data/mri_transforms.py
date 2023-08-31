@@ -208,6 +208,66 @@ class RandomFlip(DirectTransform):
         return sample
 
 
+class RandomReverse(DirectTransform):
+    r"""Random reverse of the order along a given dimension of a PyTorch tensor."""
+
+    def __init__(
+        self,
+        dim: int = 2,
+        p: float = 0.5,
+        keys_to_reverse: Tuple[TransformKey, ...] = (TransformKey.kspace,),
+    ):
+        r"""Inits :class:`RandomReverse`.
+
+        Parameters
+        ----------
+        dim : int
+            Dimension along to perform reversion. Typically this is for time or slice dimension. Default: 2.
+        p : float
+            Probability of flip. Default: 0.5
+        keys_to_reverse : tuple of TransformKeys
+            Keys to reverse. Default: "kspace".
+        """
+        super().__init__()
+
+        self.dim = dim
+        self.p = p
+        self.keys_to_reverse = keys_to_reverse
+
+    def __call__(self, sample: Dict[str, Any]) -> Dict[str, Any]:
+        """Calls :class:`RandomReverse`.
+
+        Parameters
+        ----------
+        sample: Dict[str, Any]
+            Dict sample.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Sample with flipped values of `keys_to_flip`.
+        """
+        if random.SystemRandom().random() <= self.p:
+            dim = self.dim
+            for key in self.keys_to_reverse:
+                if key in sample:
+                    tensor = sample[key]
+
+                    if dim < 0:
+                        dim += tensor.dim()
+
+                    tensor = T.view_as_complex(tensor.clone())
+
+                    index = [slice(None)] * tensor.dim()
+                    index[dim] = torch.arange(tensor.size(dim) - 1, -1, -1, dtype=torch.long)
+
+                    tensor = tensor[tuple(index)]
+
+                    sample[key] = T.view_as_real(tensor)
+
+        return sample
+
+
 class CreateSamplingMask(DirectTransform):
     """Data Transformer for training MRI reconstruction models.
 
@@ -1606,6 +1666,8 @@ def build_supervised_mri_transforms(
     random_flip: bool = False,
     random_flip_type: Optional[RandomFlipType] = RandomFlipType.random,
     random_flip_probability: Optional[float] = 0.5,
+    random_reverse: bool = False,
+    random_reverse_probability: float = 0.5,
     padding_eps: float = 0.0001,
     estimate_body_coil_image: bool = False,
     estimate_sensitivity_maps: bool = True,
@@ -1663,6 +1725,10 @@ def build_supervised_mri_transforms(
     random_flip_type : RandomFlipType, optional
         Default: RandomFlipType.random.
     random_flip_probability : float, optional
+        Default: 0.5.
+    random_reverse : bool
+        If True will perform random reversion along the time or slice dimension (2). Default: False.
+    random_reverse_probability : float
         Default: 0.5.
     padding_eps: float
         Padding epsilon. Default: 0.0001.
@@ -1732,6 +1798,14 @@ def build_supervised_mri_transforms(
                 flip=random_flip_type,
                 p=random_flip_probability,
                 keys_to_flip=(TransformKey.kspace, TransformKey.sensitivity_map),
+            )
+        ]
+    if random_reverse:
+        mri_transforms += [
+            RandomReverse(
+                dim=2,
+                p=random_reverse_probability,
+                keys_to_reverse=(TransformKey.kspace, TransformKey.sensitivity_map),
             )
         ]
     if mask_func:
@@ -1815,6 +1889,8 @@ def build_mri_transforms(
     random_flip: bool = False,
     random_flip_type: Optional[RandomFlipType] = RandomFlipType.random,
     random_flip_probability: Optional[float] = 0.5,
+    random_reverse: bool = False,
+    random_reverse_probability: float = 0.5,
     padding_eps: float = 0.0001,
     estimate_body_coil_image: bool = False,
     estimate_sensitivity_maps: bool = True,
@@ -1879,6 +1955,10 @@ def build_mri_transforms(
     random_flip_type : RandomFlipType, optional
         Default: RandomFlipType.random.
     random_flip_probability : float, optional
+        Default: 0.5.
+    random_reverse : bool
+        If True will perform random reversion along the time or slice dimension (2). Default: False.
+    random_reverse_probability : float
         Default: 0.5.
     padding_eps: float
         Padding epsilon. Default: 0.0001.
@@ -1949,6 +2029,8 @@ def build_mri_transforms(
         random_flip=random_flip,
         random_flip_type=random_flip_type,
         random_flip_probability=random_flip_probability,
+        random_reverse=random_reverse,
+        random_reverse_probability=random_reverse_probability,
         padding_eps=padding_eps,
         estimate_sensitivity_maps=estimate_sensitivity_maps,
         sensitivity_maps_type=sensitivity_maps_type,
