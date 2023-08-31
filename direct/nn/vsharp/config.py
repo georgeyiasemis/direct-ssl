@@ -134,4 +134,3 @@ class VSharpNet3DConfig(ModelConfig):
     unet_dropout: float = 0.0
     unet_cwn_conv: bool = False
     unet_norm: bool = False
-    num_splits: Optional[int] = None
