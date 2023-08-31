@@ -213,7 +213,7 @@ class RandomReverse(DirectTransform):
 
     def __init__(
         self,
-        dim: int = 2,
+        dim: int = 1,
         p: float = 0.5,
         keys_to_reverse: Tuple[TransformKey, ...] = (TransformKey.kspace,),
     ):
@@ -251,12 +251,12 @@ class RandomReverse(DirectTransform):
             dim = self.dim
             for key in self.keys_to_reverse:
                 if key in sample:
-                    tensor = sample[key]
+                    tensor = sample[key].clone()
 
                     if dim < 0:
                         dim += tensor.dim()
 
-                    tensor = T.view_as_complex(tensor.clone())
+                    tensor = T.view_as_complex(tensor)
 
                     index = [slice(None)] * tensor.dim()
                     index[dim] = torch.arange(tensor.size(dim) - 1, -1, -1, dtype=torch.long)
@@ -1803,7 +1803,7 @@ def build_supervised_mri_transforms(
     if random_reverse:
         mri_transforms += [
             RandomReverse(
-                dim=2,
+                dim=1,
                 p=random_reverse_probability,
                 keys_to_reverse=(TransformKey.kspace, TransformKey.sensitivity_map),
             )
