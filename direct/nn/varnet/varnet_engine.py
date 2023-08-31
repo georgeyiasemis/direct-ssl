@@ -187,7 +187,7 @@ class EndToEndVarNetMixedEngine(MRIModelEngine):
                 output_kspace,
                 padding=data["padding"],
             )
-            
+
             if self.model.training:
                 if is_ssl_training:
                     # Project predicted k-space onto target k-space if SSL

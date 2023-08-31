@@ -23,7 +23,7 @@ from direct.ssl.ssl import (
     MaskSplitterType,
     UniformMaskSplitterModule,
 )
-from direct.types import DirectEnum, KspaceKey, TransformKey
+from direct.types import DirectEnum, IntegerListOrTupleString, KspaceKey, TransformKey
 from direct.utils import DirectModule, DirectTransform
 from direct.utils.asserts import assert_complex
 
@@ -423,7 +423,9 @@ class CropKspace(DirectTransform):
 
         backprojected_kspace = self.backward_operator(kspace, dim=(1, 2))  # shape (coil, height, width, complex=2)
 
-        if isinstance(self.crop, str):
+        if isinstance(self.crop, IntegerListOrTupleString):
+            crop_shape = IntegerListOrTupleString(self.crop)
+        elif isinstance(self.crop, str):
             assert self.crop in sample, f"Not found {self.crop} key in sample."
             crop_shape = sample[self.crop][:2]
         else:

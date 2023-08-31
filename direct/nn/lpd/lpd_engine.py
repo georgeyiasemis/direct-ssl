@@ -9,9 +9,9 @@ from torch.cuda.amp import autocast
 
 import direct.data.transforms as T
 from direct.config import BaseConfig
-from direct.nn.ssl.mri_models import *
 from direct.engine import DoIterationOutput
 from direct.nn.mri_models import MRIModelEngine
+from direct.nn.ssl.mri_models import *
 from direct.nn.ssl.mri_models import SSDUMRIModelEngine
 from direct.utils import detach_dict, dict_to_device, normalize_image
 from direct.utils.events import get_event_storage

@@ -307,10 +307,6 @@ class FastMRIDataset(H5SliceData):
             pass_dictionaries=kwargs.get("pass_dictionaries", None),
             sensitivity_maps=kwargs.get("sensitivity_maps", None),
         )
-        # if self.sensitivity_maps is not None:
-        #     raise NotImplementedError(
-        #         f"Sensitivity maps are not supported in the current " f"{self.__class__.__name__} class."
-        #     )
 
         # TODO: Make exclusive or to give error when one of the two keys is not set.
         # TODO: Convert into mixin, and add support to main image
@@ -424,7 +420,6 @@ class CalgaryCampinasDataset(H5SliceData):
             text_description=kwargs.get("text_description", None),
             pass_h5s=pass_h5s,
             pass_dictionaries=kwargs.get("pass_dictionaries", None),
-            sensitivity_maps=kwargs.get("sensitivity_maps", None),
         )
 
         if self.sensitivity_maps is not None:
