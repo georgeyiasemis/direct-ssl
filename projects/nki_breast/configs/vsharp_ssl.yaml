@@ -74,8 +74,8 @@ validation:
 model:
     model_name: vsharp.vsharp.VSharpNet
     engine_name: VSharpNetSSDUEngine
-    num_steps: 3
-    num_steps_dc_gd: 2
+    num_steps: 12
+    num_steps_dc_gd: 10
     image_init: sense
     no_parameter_sharing: true
     image_model_architecture: unet
@@ -86,7 +86,7 @@ additional_models:
         model_name: unet.unet_2d.UnetModel2d
         in_channels: 2
         out_channels: 2
-        num_filters: 4
+        num_filters: 16
         num_pool_layers: 4
 logging:
     tensorboard:
