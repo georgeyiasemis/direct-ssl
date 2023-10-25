@@ -1326,9 +1326,9 @@ class ToTensor(DirectTransform):
             # Shape:    2D: (coil, height, width), 3D: (coil, slice, height, width)
             sample["target"] = sample["target"]
         if "sampling_mask" in sample:
-            sample["sampling_mask"] = torch.from_numpy(sample["sampling_mask"]).byte()
+            sample["sampling_mask"] = torch.from_numpy(sample["sampling_mask"]).bool()
         if "acs_mask" in sample:
-            sample["acs_mask"] = torch.from_numpy(sample["acs_mask"])
+            sample["acs_mask"] = torch.from_numpy(sample["acs_mask"]).bool()
         if "scaling_factor" in sample:
             sample["scaling_factor"] = torch.tensor(sample["scaling_factor"]).float()
         if "loglikelihood_scaling" in sample:

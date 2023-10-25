@@ -48,7 +48,7 @@ class NormalizationTransformConfig(BaseConfig):
 
 @dataclass
 class TransformsConfig(BaseConfig):
-    masking: MaskingConfig = MaskingConfig()
+    masking: Optional[MaskingConfig] = MaskingConfig()
     cropping: CropTransformConfig = CropTransformConfig()
     random_augmentations: RandomAugmentationTransformsConfig = RandomAugmentationTransformsConfig()
     padding_eps: float = 0.001
@@ -87,6 +87,12 @@ class H5SliceConfig(DatasetConfig):
     filenames_filter: Optional[List[str]] = None
     filenames_lists: Optional[List[str]] = None
     filenames_lists_root: Optional[str] = None
+
+
+@dataclass
+class NKIKSpaceBreastConfig(DatasetConfig):
+    slice_data: Optional[Tuple[int, int]] = (200, 300)
+    acs_ratio: float = 0.1
 
 
 @dataclass

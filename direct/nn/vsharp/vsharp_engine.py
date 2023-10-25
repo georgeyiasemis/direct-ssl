@@ -205,7 +205,7 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
                     # Data consistency
                     output_kspace = T.apply_padding(
                         kspace + self._forward_operator(output_images[i], data["sensitivity_map"], ~mask),
-                        padding=data["padding"],
+                        padding=data.get("padding", None),
                     )
                     # Project predicted k-space onto target k-space
                     output_kspace = T.apply_mask(output_kspace, data["target_sampling_mask"], return_mask=False)

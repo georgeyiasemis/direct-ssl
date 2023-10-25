@@ -1,0 +1,93 @@
+physics:
+    forward_operator: fft2(centered=False)
+    backward_operator: ifft2(centered=False)
+training:
+    datasets:
+        -   name: NKIKSpaceBreast
+            slice_data: [ 210, 240 ]
+            acs_ratio: [ 0.5 ]
+            transforms:
+                cropping:
+                    crop: null
+                sensitivity_map_estimation:
+                    estimate_sensitivity_maps: true
+                    sensitivity_maps_type: rss_estimate
+                scaling_key: masked_kspace  # Compute the image normalization based on the masked_kspace maximum
+                random_augmentations:
+                    random_flip: true
+                masking: null
+                normalization:
+                    scale_percentile: 0.995
+                delete_kspace: false
+                ssl_transforms: ssdu
+                use_seed: false
+                mask_split_ratio: [ 0.5 ]
+                mask_split_acs_region: [10, 10]
+                mask_split_gaussian_std: 3.5
+            text_description: training
+    batch_size: 2  # This is the batch size per GPU!
+    optimizer: Adam
+    lr: 0.003
+    weight_decay: 0.0
+    lr_step_size: 150000
+    lr_gamma: 0.8
+    lr_warmup_iter: 3000
+    num_iterations: 1000000
+    gradient_steps: 1
+    gradient_clipping: 0.0
+    gradient_debug: false
+    checkpointer:
+        checkpoint_steps: 2000
+    validation_steps: 100
+    loss:
+        crop: null
+        losses:
+            -   function: l1_loss
+                multiplier: 1.0
+            -   function: ssim_loss
+                multiplier: 1.0
+            -   function: kspace_nmae_loss
+                multiplier: 1.0
+
+validation:
+    datasets:
+        -   name: NKIKSpaceBreast
+            slice_data: [ 210, 240 ]
+            acs_ratio: [ 0.5 ]
+            transforms:
+                cropping:
+                    crop: null
+                sensitivity_map_estimation:
+                    estimate_sensitivity_maps: true
+                    sensitivity_maps_type: rss_estimate
+                scaling_key: masked_kspace  # Compute the image normalization based on the masked_kspace maximum
+                random_augmentations:
+                    random_flip: true
+                masking: null
+                normalization:
+                    scale_percentile: 0.995
+                delete_kspace: false
+            text_description: val
+    crop: null  # This sets the cropping for the DoIterationOutput
+#    metrics:  null
+    batch_size: 20
+model:
+    model_name: vsharp.vsharp.VSharpNet
+    engine_name: VSharpNetSSDUEngine
+    num_steps: 3
+    num_steps_dc_gd: 2
+    image_init: sense
+    no_parameter_sharing: true
+    image_model_architecture: unet
+    image_unet_num_filters: 32
+    auxiliary_steps: -1
+additional_models:
+    sensitivity_model:
+        model_name: unet.unet_2d.UnetModel2d
+        in_channels: 2
+        out_channels: 2
+        num_filters: 4
+        num_pool_layers: 4
+logging:
+    tensorboard:
+        num_images: 4

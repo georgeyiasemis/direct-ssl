@@ -1059,7 +1059,6 @@ class MRIModelEngine(Engine):
                 if output_kspace is not None:
                     output, target, reconstruction_size = output_kspace, data["kspace"], None
                 else:
-                    self.logger.warning(f"Requested to compute `{key}` loss but received None for `output_kspace`.")
                     continue
             else:
                 if output_image is not None:
@@ -1069,7 +1068,6 @@ class MRIModelEngine(Engine):
                         data.get("reconstruction_size", None),
                     )
                 else:
-                    self.logger.warning(f"Requested to compute `{key}` loss but received None for `output_image`.")
                     continue
             loss_dict[key] = value + weight * loss_fns[key](output, target, "mean", reconstruction_size)
         return loss_dict
