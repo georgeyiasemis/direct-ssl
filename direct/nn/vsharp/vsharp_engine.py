@@ -234,7 +234,19 @@ class VSharpNetSSDUEngine(SSDUMRIModelEngine):
                 loss_dict = detach_dict(loss_dict)  # Detach dict, only used for logging.
 
             else:
-                output_image = T.modulus(output_images[-1])
+                output_kspace = T.apply_padding(
+                    kspace + self._forward_operator(output_images[-1], data["sensitivity_map"], ~mask),
+                    padding=data.get("padding", None),
+                )
+
+                # SENSE reconstruction
+                output_image = T.modulus(
+                    T.reduce_operator(
+                        self.backward_operator(output_kspace, dim=self._spatial_dims),
+                        data["sensitivity_map"],
+                        self._coil_dim,
+                    )
+                )
 
         return DoIterationOutput(
             output_image=output_image,
