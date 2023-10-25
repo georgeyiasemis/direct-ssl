@@ -62,7 +62,7 @@ validation:
                     sensitivity_maps_type: rss_estimate
                 scaling_key: masked_kspace  # Compute the image normalization based on the masked_kspace maximum
                 random_augmentations:
-                    random_flip: true
+                    random_flip: false
                 masking: null
                 normalization:
                     scale_percentile: 0.995
