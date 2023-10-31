@@ -101,6 +101,7 @@ def fft2(
     centered: bool = True,
     normalized: bool = True,
     complex_input: bool = True,
+    shift_dim: Optional[Tuple[int, ...]] = None,
 ) -> torch.Tensor:
     """Apply centered two-dimensional Inverse Fast Fourier Transform. Can be performed in half precision when input
     shapes are powers of two.
@@ -119,8 +120,12 @@ def fft2(
         For FastMRI dataset this has to be true and for the Calgary-Campinas dataset false.
     normalized: bool
         Whether to normalize the fft. For the FastMRI this has to be true and for the Calgary-Campinas dataset false.
-    complex_input:bool
+    complex_input: bool
         True if input is complex [real-valued] tensor (complex dim = 2). False if complex-valued tensor is inputted.
+    shift_dim: tuple, list or int, optional
+        Dimensions over to perform shift relative to the `dim` parameter.
+        If `centered` is set to True, this will be ignored. If None, `shift_dim` is set to (1, 2, .., len(dim)).
+        Default: None.
 
     Returns
     -------
@@ -132,12 +137,25 @@ def fft2(
             f"Currently fft2 does not support negative indexing. "
             f"Dim should contain only positive integers. Got {dim}."
         )
+    if centered:
+        if shift_dim is not None:
+            if type(shift_dim) == int:
+                shift_dim = (shift_dim,)
+            if len(shift_dim) > len(dim):
+                raise ValueError(
+                    f"`shift_dim` cannot be longer than dim. Received `shift_dim`={shift_dim} " f"and `dim`={dim}."
+                )
+            # Calculate the actual dimensions to apply the shift
+            actual_shift_dim = [dim[i] for i in shift_dim]
+        else:
+            actual_shift_dim = dim
+
     if complex_input:
         assert_complex(data, complex_last=True)
         data = view_as_complex(data)
 
     if centered:
-        data = ifftshift(data, dim=dim)
+        data = ifftshift(data, dim=actual_shift_dim)
     # Verify whether half precision and if fft is possible in this shape. Else do a typecast.
     if verify_fft_dtype_possible(data, dim):
         data = torch.fft.fftn(
@@ -149,7 +167,7 @@ def fft2(
         raise ValueError("Currently half precision FFT is not supported.")
 
     if centered:
-        data = fftshift(data, dim=dim)
+        data = fftshift(data, dim=actual_shift_dim)
 
     if complex_input:
         data = view_as_real(data)
@@ -162,6 +180,7 @@ def ifft2(
     centered: bool = True,
     normalized: bool = True,
     complex_input: bool = True,
+    shift_dim: Optional[Tuple[int, ...]] = None,
 ) -> torch.Tensor:
     """Apply centered two-dimensional Inverse Fast Fourier Transform. Can be performed in half precision when input
     shapes are powers of two.
@@ -180,8 +199,13 @@ def ifft2(
         For FastMRI dataset this has to be true and for the Calgary-Campinas dataset false.
     normalized: bool
         Whether to normalize the ifft. For the FastMRI this has to be true and for the Calgary-Campinas dataset false.
-    complex_input:bool
+    complex_input: bool
         True if input is complex [real-valued] tensor (complex dim = 2). False if complex-valued tensor is inputted.
+    shift_dim: tuple, list or int, optional
+        Dimensions over to perform shift relative to the `dim` parameter.
+        If `centered` is set to True, this will be ignored. If None, `shift_dim` is set to (1, 2, .., len(dim)).
+        Default: None.
+
 
     Returns
     -------
@@ -194,11 +218,24 @@ def ifft2(
             f"Dim should contain only positive integers. Got {dim}."
         )
 
+    if centered:
+        if shift_dim is not None:
+            if type(shift_dim) == int:
+                shift_dim = (shift_dim,)
+            if len(shift_dim) > len(dim):
+                raise ValueError(
+                    f"`shift_dim` cannot be longer than dim. Received `shift_dim`={shift_dim} " f"and `dim`={dim}."
+                )
+            # Calculate the actual dimensions to apply the shift
+            actual_shift_dim = [dim[i] for i in shift_dim]
+        else:
+            actual_shift_dim = dim
+
     if complex_input:
         assert_complex(data, complex_last=True)
         data = view_as_complex(data)
     if centered:
-        data = ifftshift(data, dim=dim)
+        data = ifftshift(data, dim=actual_shift_dim)
     # Verify whether half precision and if fft is possible in this shape. Else do a typecast.
     if verify_fft_dtype_possible(data, dim):
         data = torch.fft.ifftn(
@@ -210,7 +247,7 @@ def ifft2(
         raise ValueError("Currently half precision FFT is not supported.")
 
     if centered:
-        data = fftshift(data, dim=dim)
+        data = fftshift(data, dim=actual_shift_dim)
     if complex_input:
         data = view_as_real(data)
     return data
