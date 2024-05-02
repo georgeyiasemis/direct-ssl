@@ -152,7 +152,7 @@ class H5SliceConfig(DatasetConfig):
 
 
 @dataclass
-class CMRxReconConfig(DatasetConfig):
+class CMRxRecon2023Config(DatasetConfig):
     regex_filter: Optional[str] = None
     data_root: Optional[str] = None
     filenames_filter: Optional[List[str]] = None
@@ -162,6 +162,19 @@ class CMRxReconConfig(DatasetConfig):
     compute_mask: bool = False
     extra_keys: Optional[List[str]] = None
     kspace_context: Optional[str] = None
+
+
+class CMRxRecon2024Config(DatasetConfig):
+    regex_filter: Optional[str] = None
+    data_root: Optional[str] = None
+    filenames_filter: Optional[List[str]] = None
+    filenames_lists: Optional[List[str]] = None
+    filenames_lists_root: Optional[str] = None
+    kspace_key: str = "kspace_full"
+    compute_mask: bool = False
+    extra_keys: Optional[List[str]] = None
+    kspace_context: Optional[str] = None
+    square_acs: bool = False
 
 
 @dataclass
