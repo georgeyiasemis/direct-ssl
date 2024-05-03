@@ -961,10 +961,10 @@ class CMRxRecon2024Dataset(Dataset):
         self.parse_filenames_data(filenames, extra_mats=None)  # Collect information on the image masks_dict.
 
         if extra_keys:
-            intersect_keys = self.VALID_CHALLENGE_ACCELERATIONS.intersection(extra_keys)
+            intersect_keys = self.VALID_CHALLENGE_MASKS.intersection(extra_keys)
             if len(intersect_keys) > 1:
                 raise ValueError(
-                    f"Only one of {self.VALID_CHALLENGE_ACCELERATIONS} can be specified in 'extra_keys'. "
+                    f"Only one of {self.VALID_CHALLENGE_MASKS} can be specified in 'extra_keys'. "
                     f"Received {extra_keys}."
                 )
 
