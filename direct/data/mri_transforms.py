@@ -282,6 +282,7 @@ class CreateSamplingMask(DirectTransform):
         shape: Optional[tuple[int, ...]] = None,
         use_seed: bool = True,
         return_acs: bool = False,
+        dynamic_mask: bool = False,
     ) -> None:
         """Inits :class:`CreateSamplingMask`.
 
@@ -296,12 +297,16 @@ class CreateSamplingMask(DirectTransform):
             the same mask every time. Default: True.
         return_acs: bool
             If True, it will generate an ACS mask. Default: False.
+        dynamic_mask: bool
+            If True, it will generate a dynamic mask in case of time or multislice data.
+            Default: False.
         """
         super().__init__()
         self.mask_func = mask_func
         self.shape = shape
         self.use_seed = use_seed
         self.return_acs = return_acs
+        self.dynamic_mask = dynamic_mask
 
     def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
         """Calls :class:`CreateSamplingMask`.
@@ -324,21 +329,53 @@ class CreateSamplingMask(DirectTransform):
         else:
             shape = self.shape + (2,)
 
-        seed = None if not self.use_seed else tuple(map(ord, str(sample["filename"])))
+        if sample["kspace"].ndim == 5 and self.dynamic_mask:
+            nz = sample["kspace"].shape[1]  # Number of time frames or slices
+            sampling_mask = []
 
-        sampling_mask = self.mask_func(shape=shape, seed=seed, return_acs=False)
+            if self.return_acs:
+                acs_mask = []
+            seed = None if not self.use_seed else tuple(map(ord, str(sample["filename"])))
 
-        if sample["kspace"].ndim == 5:
-            sampling_mask = sampling_mask.unsqueeze(0)
+            if seed:
+                np.random.seed(seed)
+                dynamic_seeds = [int(_) for _ in np.random.randint(0, 10000, nz)]
+            else:
+                dynamic_seeds = [None for _ in range(nz)]
 
-        if "padding" in sample:
-            sampling_mask = T.apply_padding(sampling_mask, sample["padding"])
+            for i in range(nz):
+                sampling_mask_z = self.mask_func(
+                    shape=shape, seed=dynamic_seeds[i], return_acs=False, return_acceleration=True
+                )
 
-        # Shape 3D: (1, 1, height, width, 1), 2D: (1, height, width, 1)
-        sample["sampling_mask"] = sampling_mask
+                sampling_mask.append(sampling_mask_z.to(sample["kspace"].dtype))
+
+                if self.return_acs:
+                    acs_mask.append(
+                        self.mask_func(shape=shape, seed=dynamic_seeds[i], return_acs=True).to(sample["kspace"].dtype)
+                    )
+
+            sampling_mask = torch.stack(sampling_mask, dim=1)
+            if self.return_acs:
+                acs_mask = torch.stack(acs_mask, dim=1)
+        else:
+            seed = None if not self.use_seed else tuple(map(ord, str(sample["filename"])))
+
+            sampling_mask = self.mask_func(shape=shape, seed=seed, return_acs=False, return_acceleration=True)
+
+            if sample["kspace"].ndim == 5:
+                sampling_mask = sampling_mask.unsqueeze(1)
+
+            if self.return_acs:
+                acs_mask = self.mask_func(shape=shape, seed=seed, return_acs=True).to(sample["kspace"].dtype)
+                if sample["kspace"].ndim == 5:
+                    acs_mask = acs_mask.unsqueeze(1)
+
+        # Shape (1, [1 or nz], height, width, 1)
+        sample["sampling_mask"] = sampling_mask.to(sample["kspace"].dtype)
 
         if self.return_acs:
-            sample["acs_mask"] = self.mask_func(shape=shape, seed=seed, return_acs=True)
+            sample["acs_mask"] = acs_mask
 
         return sample
 
@@ -1429,6 +1466,7 @@ def build_pre_mri_transforms(
     forward_operator: Callable,
     backward_operator: Callable,
     mask_func: Optional[Callable],
+    dynamic_mask: bool = False,
     crop: Optional[Union[tuple[int, int], str]] = None,
     crop_type: Optional[str] = "uniform",
     image_center_crop: bool = True,
@@ -1459,6 +1497,8 @@ def build_pre_mri_transforms(
         The backward operator, e.g. some form of inverse FFT (centered or uncentered).
     mask_func : Callable or None
         A function which creates a sampling mask of the appropriate shape.
+    dynamic_mask : bool
+        If True, the mask will be computed dynamically for each time-step or slice. Default: False.
     crop : tuple[int, int] or str, Optional
         If not None, this will transform the "kspace" to an image domain, crop it, and transform it back.
         If a tuple of integers is given then it will crop the backprojected kspace to that size. If
@@ -1530,6 +1570,7 @@ def build_pre_mri_transforms(
                 shape=(None if (isinstance(crop, str)) else crop),
                 use_seed=use_seed,
                 return_acs=True,
+                dynamic_mask=dynamic_mask,
             ),
         ]
     mri_transforms += [PadCoilDimension(pad_coils=pad_coils, key=KspaceKey.KSPACE)]
@@ -1652,6 +1693,7 @@ def build_supervised_mri_transforms(
     forward_operator: Callable,
     backward_operator: Callable,
     mask_func: Optional[Callable],
+    dynamic_mask: bool = False,
     crop: Optional[Union[tuple[int, int], str]] = None,
     crop_type: Optional[str] = "uniform",
     image_center_crop: bool = True,
@@ -1700,6 +1742,8 @@ def build_supervised_mri_transforms(
         The backward operator, e.g. some form of inverse FFT (centered or uncentered).
     mask_func : Callable or None
         A function which creates a sampling mask of the appropriate shape.
+    dynamic_mask : bool
+        If True, the mask will be computed dynamically for each time-step or slice. Default: False.
     crop : tuple[int, int] or str, Optional
         If not None, this will transform the "kspace" to an image domain, crop it, and transform it back.
         If a tuple of integers is given then it will crop the backprojected kspace to that size. If
@@ -1808,6 +1852,7 @@ def build_supervised_mri_transforms(
                 shape=(None if (isinstance(crop, str)) else crop),
                 use_seed=use_seed,
                 return_acs=estimate_sensitivity_maps,
+                dynamic_mask=dynamic_mask,
             ),
         ]
 
@@ -1880,6 +1925,7 @@ def build_mri_transforms(
     forward_operator: Callable,
     backward_operator: Callable,
     mask_func: Optional[Callable],
+    dynamic_mask: bool = False,
     crop: Optional[Union[tuple[int, int], str]] = None,
     crop_type: Optional[str] = "uniform",
     image_center_crop: bool = True,
@@ -1936,6 +1982,8 @@ def build_mri_transforms(
         The backward operator, e.g. some form of inverse FFT (centered or uncentered).
     mask_func : Callable or None
         A function which creates a sampling mask of the appropriate shape.
+    dynamic_mask : bool
+        If True, the mask will be computed dynamically for each time-step or slice. Default: False.
     crop : tuple[int, int] or str, Optional
         If not None, this will transform the "kspace" to an image domain, crop it, and transform it back.
         If a tuple of integers is given then it will crop the backprojected kspace to that size. If
@@ -2031,6 +2079,7 @@ def build_mri_transforms(
         forward_operator=forward_operator,
         backward_operator=backward_operator,
         mask_func=mask_func,
+        dynamic_mask=dynamic_mask,
         crop=crop,
         crop_type=crop_type,
         image_center_crop=image_center_crop,

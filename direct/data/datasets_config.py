@@ -60,6 +60,8 @@ class TransformsConfig(BaseConfig):
     ----------
     masking : MaskingConfig
         Configuration for the masking.
+    dynamic_mask : bool
+        If True, the mask will be computed dynamically for each time-step or slice. Default: False.
     cropping : CropTransformConfig
         Configuration for the cropping.
     random_augmentations : RandomAugmentationTransformsConfig
@@ -110,6 +112,7 @@ class TransformsConfig(BaseConfig):
     """
 
     masking: Optional[MaskingConfig] = MaskingConfig()
+    dynamic_mask: bool = False
     cropping: CropTransformConfig = CropTransformConfig()
     random_augmentations: RandomAugmentationTransformsConfig = RandomAugmentationTransformsConfig()
     padding_eps: float = 0.001
