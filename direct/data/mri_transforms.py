@@ -344,9 +344,7 @@ class CreateSamplingMask(DirectTransform):
                 dynamic_seeds = [None for _ in range(nz)]
 
             for i in range(nz):
-                sampling_mask_z = self.mask_func(
-                    shape=shape, seed=dynamic_seeds[i], return_acs=False, return_acceleration=True
-                )
+                sampling_mask_z = self.mask_func(shape=shape, seed=dynamic_seeds[i], return_acs=False)
 
                 sampling_mask.append(sampling_mask_z.to(sample["kspace"].dtype))
 
@@ -361,7 +359,7 @@ class CreateSamplingMask(DirectTransform):
         else:
             seed = None if not self.use_seed else tuple(map(ord, str(sample["filename"])))
 
-            sampling_mask = self.mask_func(shape=shape, seed=seed, return_acs=False, return_acceleration=True)
+            sampling_mask = self.mask_func(shape=shape, seed=seed, return_acs=False)
 
             if sample["kspace"].ndim == 5:
                 sampling_mask = sampling_mask.unsqueeze(1)
