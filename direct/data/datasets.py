@@ -32,8 +32,8 @@ __all__ = [
     "build_dataset_from_input",
     "CalgaryCampinasDataset",
     "ConcatDataset",
-    "CMRxRec2023Dataset",
-    "CMRxRec2024Dataset",
+    "CMRxRecon2023Dataset",
+    "CMRxRecon2024Dataset",
     "FastMRIDataset",
     "FakeMRIBlobsDataset",
     "SheppLoganDataset",
@@ -830,28 +830,27 @@ class CMRxRecon2024Dataset(Dataset):
 
     NUM_ACS_LINES = 16
     VALID_CHALLENGE_MASKS = {
-        "mask_ktUniform8",
+        "mask_Uniform10",
+        "mask_Uniform4",
+        "mask_Uniform8",
         "mask_ktGaussian12",
-        "mask_ktUniform20",
+        "mask_ktGaussian16",
+        "mask_ktGaussian20",
+        "mask_ktGaussian24",
+        "mask_ktGaussian4",
+        "mask_ktGaussian8",
+        "mask_ktRadial12",
         "mask_ktRadial16",
+        "mask_ktRadial20",
+        "mask_ktRadial24",
+        "mask_ktRadial4",
         "mask_ktRadial8",
         "mask_ktUniform12",
-        "mask_ktUniform24",
-        "mask_ktRadial12",
-        "mask_Uniform4",
         "mask_ktUniform16",
-        "mask_ktGaussian24",
-        "mask_ktRadial24",
-        "mask_ktGaussian16",
-        "mask_ktRadial4",
-        "mask_ktGaussian8",
-        "mask_Uniform10",
-        "mask_ktGaussian20",
-        "mask_ktRadial20",
-        "mask_Uniform8",
-        "kspace_full",
-        "mask_ktGaussian4",
+        "mask_ktUniform20",
+        "mask_ktUniform24",
         "mask_ktUniform4",
+        "mask_ktUniform8",
     }
 
     def __init__(
@@ -961,12 +960,20 @@ class CMRxRecon2024Dataset(Dataset):
         self.parse_filenames_data(filenames, extra_mats=None)  # Collect information on the image masks_dict.
 
         if extra_keys:
-            intersect_keys = self.VALID_CHALLENGE_MASKS.intersection(extra_keys)
-            if len(intersect_keys) > 1:
+
+            difference = set(extra_keys) - self.VALID_CHALLENGE_MASKS
+            if difference != set():
                 raise ValueError(
-                    f"Only one of {self.VALID_CHALLENGE_MASKS} can be specified in 'extra_keys'. "
-                    f"Received {extra_keys}."
+                    f"Only mask names in {self.VALID_CHALLENGE_MASKS} can be specified in 'extra_keys'. "
+                    f"Received {difference}."
                 )
+
+            # intersect_keys = self.VALID_CHALLENGE_MASKS.intersection(extra_keys)
+            # if len(intersect_keys) > 1:
+            #     raise ValueError(
+            #         f"Only one of {self.VALID_CHALLENGE_MASKS} can be specified in 'extra_keys'. "
+            #         f"Received {extra_keys}."
+            #     )
 
         self.extra_keys = extra_keys
 
@@ -1139,49 +1146,62 @@ class CMRxRecon2024Dataset(Dataset):
         kspace = kspace["real"] + 1j * kspace["imag"]
         kspace = np.swapaxes(kspace, -1, -2)
 
+        shape = kspace.shape
+
+        if self.kspace_context:
+            # If context put coil dim first
+            kspace = np.swapaxes(kspace, 0, 1)
+
         sample = {"kspace": kspace, "filename": str(filename), "slice_no": slice_no}
 
         if self.compute_mask or (any("mask" in key for key in extra_data)):
-            nx, ny = kspace.shape[-2:]
+            nx, ny = shape[-2:]
+
+            if self.kspace_context:  # slice or time dim
+                n = shape[-3]
+
             if self.compute_mask:
-                sampling_mask = np.abs(kspace).sum(tuple(range(len(kspace.shape) - 2))) != 0
+                sampling_mask = np.abs(kspace).sum(0) != 0
 
             else:
                 # Get the mask key.
                 mask_key = random.choice([key for key in extra_data if "mask" in key])
                 sampling_mask = np.array(extra_data[mask_key]).astype(bool)
                 sampling_mask = np.swapaxes(sampling_mask, -1, -2)
+                if self.kspace_context and sampling_mask.ndim == 2:
+                    sampling_mask = np.tile(sampling_mask, (n, 1, 1))
 
                 for key in self.VALID_CHALLENGE_MASKS:
                     if key in extra_data:
                         del extra_data[key]
 
-            acs_mask = np.zeros((nx, ny), dtype=bool)
+            acs_mask = np.zeros(sampling_mask.shape, dtype=bool)
+
             if not self.square_acs and not (any("mask" in key for key in extra_data)):
-                acs_mask[:, ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2] = True
+                acs_mask[..., ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2] = True
             else:
                 acs_mask[
+                    ...,
                     nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
                     ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
                 ] = True
+
+            # Add coil (first) and complex (last) dimensions
             sample["sampling_mask"] = sampling_mask[np.newaxis, ..., np.newaxis]
             sample["acs_mask"] = acs_mask[np.newaxis, ..., np.newaxis]
 
-        if self.kspace_context and "sampling_mask" in sample:
-            sample["sampling_mask"] = sample["sampling_mask"][np.newaxis]
-            sample["acs_mask"] = sample["acs_mask"][np.newaxis]
+        # if self.kspace_context and "sampling_mask" in sample:
+        #     sample["sampling_mask"] = sample["sampling_mask"][np.newaxis]
+        #     sample["acs_mask"] = sample["acs_mask"][np.newaxis]
 
         sample.update(extra_data)
 
-        shape = kspace.shape
         sample["reconstruction_size"] = (int(np.round(shape[-2] / 3)), int(np.round(shape[-1] / 2)), 1)
 
         if self.kspace_context:
             # Add context dimension in reconstruction size without any crop
             context_size = shape[0]
             sample["reconstruction_size"] = (context_size,) + sample["reconstruction_size"]
-            # If context put coil dim first
-            sample["kspace"] = np.swapaxes(sample["kspace"], 0, 1)
 
         if self.transform:
             sample = self.transform(sample)
