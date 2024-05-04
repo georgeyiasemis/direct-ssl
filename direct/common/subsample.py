@@ -1302,7 +1302,7 @@ class CIRCUSMaskFunc(BaseMaskFunc):
         with temp_seed(self.rng, seed):
             num_rows = shape[-3]
             num_cols = shape[-2]
-            center_fraction, acceleration = self.choose_acceleration()[1]
+            center_fraction, acceleration = self.choose_acceleration()
 
             if self.subsampling_scheme == "circus-radial":
                 mask = self.circus_radial_mask(
