@@ -1045,6 +1045,11 @@ class CIRCUSMaskFunc(BaseMaskFunc):
     ----------
     accelerations : Union[list[Number], tuple[Number, ...]]
         Amount of under-sampling.
+    center_fractions : list or tuple of floats
+        Must have the same length as `accelerations`. Amount of center fully-sampling.
+        For center_scale='r', then a centered disk area with radius equal to
+        :math:`R = \sqrt{{n_r}^2 + {n_c}^2} \\times r` will be fully sampled, where :math:`n_r` and :math:`n_c`
+        denote the input shape.
     subsampling_scheme : CIRCUSSamplingMode
         The subsampling scheme to use. Can be either `CIRCUSSamplingMode.CIRCUS_RADIAL` or
         `CIRCUSSamplingMode.CIRCUS_SPIRAL`.
@@ -1062,15 +1067,21 @@ class CIRCUSMaskFunc(BaseMaskFunc):
     def __init__(
         self,
         accelerations: Union[list[Number], tuple[Number, ...]],
+        center_fractions: Union[list[float], tuple[float, ...]],
         subsampling_scheme: CIRCUSSamplingMode,
         uniform_range: bool = False,
     ) -> None:
-        """Inits :class:`CIRCUSMaskFunc`.
+        r"""Inits :class:`CIRCUSMaskFunc`.
 
         Parameters
         ----------
         accelerations : Union[list[Number], tuple[Number, ...]]
             Amount of under-sampling.
+        center_fractions : list or tuple of floats
+            Must have the same length as `accelerations`. Amount of center fully-sampling.
+            For center_scale='r', then a centered disk area with radius equal to
+            :math:`R = \sqrt{{n_r}^2 + {n_c}^2} \\times r` will be fully sampled, where :math:`n_r` and :math:`n_c`
+            denote the input shape.
         subsampling_scheme : CIRCUSSamplingMode
             The subsampling scheme to use. Can be either `CIRCUSSamplingMode.CIRCUS_RADIAL` or
             `CIRCUSSamplingMode.CIRCUS_SPIRAL`.
@@ -1084,7 +1095,7 @@ class CIRCUSMaskFunc(BaseMaskFunc):
         """
         super().__init__(
             accelerations=accelerations,
-            center_fractions=tuple(0 for _ in range(len(accelerations))),
+            center_fractions=center_fractions,
             uniform_range=uniform_range,
         )
         if subsampling_scheme not in [CIRCUSSamplingMode.CIRCUS_RADIAL, CIRCUSSamplingMode.CIRCUS_SPIRAL]:
@@ -1317,6 +1328,11 @@ class RadialMaskFunc(CIRCUSMaskFunc):
     ----------
     accelerations : Union[list[Number], tuple[Number, ...]]
         Amount of under-sampling.
+    center_fractions : list or tuple of floats
+        Must have the same length as `accelerations`. Amount of center fully-sampling.
+        For center_scale='r', then a centered disk area with radius equal to
+        :math:`R = \sqrt{{n_r}^2 + {n_c}^2} \\times r` will be fully sampled, where :math:`n_r` and :math:`n_c`
+        denote the input shape.
     uniform_range : bool
             If True then an acceleration will be uniformly sampled between the two values. Default: False.
     """
@@ -1324,6 +1340,7 @@ class RadialMaskFunc(CIRCUSMaskFunc):
     def __init__(
         self,
         accelerations: Union[list[Number], tuple[Number, ...]],
+        center_fractions: Union[list[float], tuple[float, ...]],
         uniform_range: bool = False,
     ) -> None:
         """Inits :class:`RadialMaskFunc`.
@@ -1332,11 +1349,17 @@ class RadialMaskFunc(CIRCUSMaskFunc):
         ----------
         accelerations : Union[list[Number], tuple[Number, ...]]
             Amount of under-sampling.
+        center_fractions : list or tuple of floats
+            Must have the same length as `accelerations`. Amount of center fully-sampling.
+            For center_scale='r', then a centered disk area with radius equal to
+            :math:`R = \sqrt{{n_r}^2 + {n_c}^2} \\times r` will be fully sampled, where :math:`n_r` and :math:`n_c`
+            denote the input shape.
         uniform_range : bool
             If True then an acceleration will be uniformly sampled between the two values. Default: False.
         """
         super().__init__(
             accelerations=accelerations,
+            center_fractions=center_fractions,
             subsampling_scheme=CIRCUSSamplingMode.CIRCUS_RADIAL,
         )
 
@@ -1348,6 +1371,11 @@ class SpiralMaskFunc(CIRCUSMaskFunc):
     ----------
     accelerations : Union[list[Number], tuple[Number, ...]]
         Amount of under-sampling.
+    center_fractions : list or tuple of floats
+        Must have the same length as `accelerations`. Amount of center fully-sampling.
+        For center_scale='r', then a centered disk area with radius equal to
+        :math:`R = \sqrt{{n_r}^2 + {n_c}^2} \\times r` will be fully sampled, where :math:`n_r` and :math:`n_c`
+        denote the input shape.
     uniform_range : bool
             If True then an acceleration will be uniformly sampled between the two values. Default: False.
     """
@@ -1355,6 +1383,7 @@ class SpiralMaskFunc(CIRCUSMaskFunc):
     def __init__(
         self,
         accelerations: Union[list[Number], tuple[Number, ...]],
+        center_fractions: Union[list[float], tuple[float, ...]],
         uniform_range: bool = False,
     ) -> None:
         """Inits :class:`SpiralMaskFunc`.
@@ -1363,11 +1392,17 @@ class SpiralMaskFunc(CIRCUSMaskFunc):
         ----------
         accelerations : Union[list[Number], tuple[Number, ...]]
             Amount of under-sampling.
+        center_fractions : list or tuple of floats
+            Must have the same length as `accelerations`. Amount of center fully-sampling.
+            For center_scale='r', then a centered disk area with radius equal to
+            :math:`R = \sqrt{{n_r}^2 + {n_c}^2} \\times r` will be fully sampled, where :math:`n_r` and :math:`n_c`
+            denote the input shape.
         uniform_range : bool
             If True then an acceleration will be uniformly sampled between the two values. Default: False.
         """
         super().__init__(
             accelerations=accelerations,
+            center_fractions=center_fractions,
             subsampling_scheme=CIRCUSSamplingMode.CIRCUS_SPIRAL,
         )
 
