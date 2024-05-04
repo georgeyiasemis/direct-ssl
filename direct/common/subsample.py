@@ -1302,7 +1302,7 @@ class CIRCUSMaskFunc(BaseMaskFunc):
         with temp_seed(self.rng, seed):
             num_rows = shape[-3]
             num_cols = shape[-2]
-            acceleration = self.choose_acceleration()[1]
+            center_fraction, acceleration = self.choose_acceleration()[1]
 
             if self.subsampling_scheme == "circus-radial":
                 mask = self.circus_radial_mask(
@@ -1314,11 +1314,16 @@ class CIRCUSMaskFunc(BaseMaskFunc):
                     shape=(num_rows, num_cols),
                     acceleration=acceleration,
                 )
-
+            mask = mask.unsqueeze(0).unsqueeze(-1)
             if return_acs:
-                return self.circular_centered_mask(mask).unsqueeze(0).unsqueeze(-1)
+                return (
+                    mask
+                    & torch.from_numpy(
+                        centered_disk_mask((num_rows, num_cols), center_fraction)[np.newaxis, ..., np.newaxis]
+                    ).bool()
+                )
 
-            return mask.unsqueeze(0).unsqueeze(-1)
+            return mask
 
 
 class RadialMaskFunc(CIRCUSMaskFunc):
