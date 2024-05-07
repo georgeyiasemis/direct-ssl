@@ -1124,6 +1124,17 @@ class CMRxRecon2024Dataset(Dataset):
 
         extra_data = {}
 
+        if extra_keys:
+            for extra_key in self.extra_keys:
+                extra_data[extra_key] = data[extra_key][()]
+
+                # If kspace context is None or slice and kt mask, get the corresponding time frame mask
+                if self.kspace_context != "time" and extra_data[extra_key].ndim == 3:
+                    if self.kspace_context is None:
+                        extra_data[extra_key] = extra_data[extra_key][inds[slice_no][0]]
+                    else:
+                        extra_data[extra_key] = extra_data[extra_key][slice_no]
+
         data.close()
         return curr_data, extra_data
 
@@ -1153,8 +1164,8 @@ class CMRxRecon2024Dataset(Dataset):
             kspace = np.swapaxes(kspace, 0, 1)
 
             if self.context_percentage is not None:
-                context_size = int(ceil(shape[0] * self.context_percentage))
-                kspace = kspace[:context_size]
+                context_size = int(ceil(kspace.shape[1] * self.context_percentage))
+                kspace = kspace[:, :context_size]
 
         shape = kspace.shape
 
@@ -1175,7 +1186,12 @@ class CMRxRecon2024Dataset(Dataset):
                 sampling_mask = np.array(extra_data[mask_key]).astype(bool)
                 sampling_mask = np.swapaxes(sampling_mask, -1, -2)
                 if self.kspace_context and sampling_mask.ndim == 2:
+                    # If kspace context, repeat the mask for all slices or time frames.
+                    # If time this is consistent with kt masks
                     sampling_mask = np.tile(sampling_mask, (n, 1, 1))
+
+                    if self.context_percentage is not None:
+                        sampling_mask = sampling_mask[:context_size]
 
                 for key in self.VALID_CHALLENGE_MASKS:
                     if key in extra_data:
@@ -1196,18 +1212,13 @@ class CMRxRecon2024Dataset(Dataset):
             sample["sampling_mask"] = sampling_mask[np.newaxis, ..., np.newaxis]
             sample["acs_mask"] = acs_mask[np.newaxis, ..., np.newaxis]
 
-        # if self.kspace_context and "sampling_mask" in sample:
-        #     sample["sampling_mask"] = sample["sampling_mask"][np.newaxis]
-        #     sample["acs_mask"] = sample["acs_mask"][np.newaxis]
-
         sample.update(extra_data)
 
         sample["reconstruction_size"] = (int(np.round(shape[-2] / 3)), int(np.round(shape[-1] / 2)), 1)
 
         if self.kspace_context:
             # Add context dimension in reconstruction size without any crop
-            context_size = shape[0]
-            sample["reconstruction_size"] = (context_size,) + sample["reconstruction_size"]
+            sample["reconstruction_size"] = (shape[1],) + sample["reconstruction_size"]
 
         if self.transform:
             sample = self.transform(sample)
