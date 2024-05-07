@@ -197,7 +197,9 @@ class RandomFlip(DirectTransform):
                 else (
                     (-1,)
                     if self.flip == "vertical"
-                    else (-2, -1) if self.flip == "both" else (random.SystemRandom().choice([-2, -1]),)
+                    else (-2, -1)
+                    if self.flip == "both"
+                    else (random.SystemRandom().choice([-2, -1]),)
                 )
             )
 
@@ -346,12 +348,10 @@ class CreateSamplingMask(DirectTransform):
             for i in range(nz):
                 sampling_mask_z = self.mask_func(shape=shape, seed=dynamic_seeds[i], return_acs=False)
 
-                sampling_mask.append(sampling_mask_z.to(sample["kspace"].dtype))
+                sampling_mask.append(sampling_mask_z)
 
                 if self.return_acs:
-                    acs_mask.append(
-                        self.mask_func(shape=shape, seed=dynamic_seeds[i], return_acs=True).to(sample["kspace"].dtype)
-                    )
+                    acs_mask.append(self.mask_func(shape=shape, seed=dynamic_seeds[i], return_acs=True))
 
             sampling_mask = torch.stack(sampling_mask, dim=1)
             if self.return_acs:
@@ -365,12 +365,12 @@ class CreateSamplingMask(DirectTransform):
                 sampling_mask = sampling_mask.unsqueeze(1)
 
             if self.return_acs:
-                acs_mask = self.mask_func(shape=shape, seed=seed, return_acs=True).to(sample["kspace"].dtype)
+                acs_mask = self.mask_func(shape=shape, seed=seed, return_acs=True)
                 if sample["kspace"].ndim == 5:
                     acs_mask = acs_mask.unsqueeze(1)
 
         # Shape (1, [1 or nz], height, width, 1)
-        sample["sampling_mask"] = sampling_mask.to(sample["kspace"].dtype)
+        sample["sampling_mask"] = sampling_mask
 
         if self.return_acs:
             sample["acs_mask"] = acs_mask
