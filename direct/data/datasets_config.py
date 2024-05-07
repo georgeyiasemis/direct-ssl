@@ -178,6 +178,7 @@ class CMRxRecon2024Config(DatasetConfig):
     extra_keys: Optional[List[str]] = None
     kspace_context: Optional[str] = None
     square_acs: bool = False
+    context_percentage: Optional[float] = None
 
 
 @dataclass

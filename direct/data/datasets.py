@@ -12,6 +12,7 @@ import random
 import sys
 import xml.etree.ElementTree as etree  # nosec
 from enum import Enum
+from math import ceil
 from typing import Any, Callable, Optional, Sequence, Union
 
 import h5py
@@ -825,7 +826,6 @@ class CMRxRecon2023Dataset(Dataset):
 
 
 class CMRxRecon2024Dataset(Dataset):
-
     # pylint: disable=too-many-arguments
 
     NUM_ACS_LINES = 16
@@ -866,6 +866,7 @@ class CMRxRecon2024Dataset(Dataset):
         compute_mask: bool = False,
         kspace_context: Optional[str] = None,
         square_acs: bool = False,
+        context_percentage: Optional[float] = None,
     ) -> None:
         """Inits :class:`CMRxReconDataset`.
 
@@ -960,7 +961,6 @@ class CMRxRecon2024Dataset(Dataset):
         self.parse_filenames_data(filenames, extra_mats=None)  # Collect information on the image masks_dict.
 
         if extra_keys:
-
             difference = set(extra_keys) - self.VALID_CHALLENGE_MASKS
             if difference != set():
                 raise ValueError(
@@ -974,6 +974,11 @@ class CMRxRecon2024Dataset(Dataset):
             #         f"Only one of {self.VALID_CHALLENGE_MASKS} can be specified in 'extra_keys'. "
             #         f"Received {extra_keys}."
             #     )
+
+        if context_percentage is not None:
+            if context_percentage < 0 or context_percentage > 1:
+                raise ValueError(f"Context percentage should be between 0 and 1. Received {context_percentage}.")
+        self.context_percentage = context_percentage
 
         self.extra_keys = extra_keys
 
@@ -1122,6 +1127,9 @@ class CMRxRecon2024Dataset(Dataset):
         if extra_keys:
             for extra_key in self.extra_keys:
                 extra_data[extra_key] = data[extra_key][()]
+                if self.kspace_context == "time" and extra_data[extra_key].ndim == 3:
+                    extra_data[extra_key] = extra_data[extra_key][slice_no]
+
         data.close()
         return curr_data, extra_data
 
@@ -1146,11 +1154,15 @@ class CMRxRecon2024Dataset(Dataset):
         kspace = kspace["real"] + 1j * kspace["imag"]
         kspace = np.swapaxes(kspace, -1, -2)
 
-        shape = kspace.shape
-
         if self.kspace_context:
             # If context put coil dim first
             kspace = np.swapaxes(kspace, 0, 1)
+
+            if self.context_percentage is not None:
+                context_size = int(ceil(shape[0] * self.context_percentage))
+                kspace = kspace[:context_size]
+
+        shape = kspace.shape
 
         sample = {"kspace": kspace, "filename": str(filename), "slice_no": slice_no}
 
