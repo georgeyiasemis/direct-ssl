@@ -1127,7 +1127,7 @@ class CMRxRecon2024Dataset(Dataset):
         if extra_keys:
             for extra_key in self.extra_keys:
                 extra_data[extra_key] = data[extra_key][()]
-                if self.kspace_context == "time" and extra_data[extra_key].ndim == 3:
+                if self.kspace_context != "time" and extra_data[extra_key].ndim == 3:
                     extra_data[extra_key] = extra_data[extra_key][slice_no]
 
         data.close()
