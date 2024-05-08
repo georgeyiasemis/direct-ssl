@@ -270,7 +270,7 @@ class RandomReverse(DirectTransform):
         return sample
 
 
-class RandomDropType(DirectTransform):
+class RandomDropType(DirectEnum):
     RANDOM = "random"
     BEGINNING = "beginning"
     END = "end"
