@@ -1190,8 +1190,8 @@ class CMRxRecon2024Dataset(Dataset):
                     # If time this is consistent with kt masks
                     sampling_mask = np.tile(sampling_mask, (n, 1, 1))
 
-                    if self.context_percentage is not None:
-                        sampling_mask = sampling_mask[:context_size]
+                if self.context_percentage is not None:
+                    sampling_mask = sampling_mask[:context_size]
 
                 for key in self.VALID_CHALLENGE_MASKS:
                     if key in extra_data:
