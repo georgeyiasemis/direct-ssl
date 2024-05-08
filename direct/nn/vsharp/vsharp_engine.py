@@ -95,26 +95,68 @@ class VSharpNet3DEngine(MRIModelEngine):
         output_kspace: TensorOrNone
 
         with autocast(enabled=self.mixed_precision):
-            output_images, output_kspace = self.forward_function(data)
-            output_images = [T.modulus_if_complex(_, complex_axis=self._complex_dim) for _ in output_images]
+            output_images, _ = self.forward_function(data)
             loss_dict = {k: torch.tensor([0.0], dtype=data["target"].dtype).to(self.device) for k in loss_fns.keys()}
 
-            auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
-            for i, output_image in enumerate(output_images):
-                loss_dict = self.compute_loss_on_data(
-                    loss_dict, loss_fns, data, output_image, None, auxiliary_loss_weights[i]
+            if self.model.training:
+                auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
+                for i, output_image in enumerate(output_images):
+
+                    output_kspace = data["masked_kspace"] + T.apply_mask(
+                        T.apply_padding(
+                            self.forward_operator(
+                                T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim),
+                                dim=self._spatial_dims,
+                            ),
+                            padding=data.get("padding", None),
+                        ),
+                        ~data["sampling_mask"],
+                        return_mask=False,
+                    )
+                    # Compute loss on k-space
+                    loss_dict = self.compute_loss_on_data(
+                        loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
+                    )
+
+                    output_image = T.modulus(
+                        T.reduce_operator(
+                            self.backward_operator(output_kspace, dim=self._spatial_dims),
+                            data["sensitivity_map"],
+                            self._coil_dim,
+                        )
+                    )
+
+                    # Compute loss on image domain
+                    loss_dict = self.compute_loss_on_data(
+                        loss_dict, loss_fns, data, output_image, None, auxiliary_loss_weights[i]
+                    )
+
+                loss = sum(loss_dict.values())  # type: ignore
+
+                self._scaler.scale(loss).backward()
+            else:
+                output_kspace = data["masked_kspace"] + T.apply_mask(
+                    T.apply_padding(
+                        self.forward_operator(
+                            T.expand_operator(output_images[-1], data["sensitivity_map"], dim=self._coil_dim),
+                            dim=self._spatial_dims,
+                        ),
+                        padding=data.get("padding", None),
+                    ),
+                    ~data["sampling_mask"],
+                    return_mask=False,
                 )
-            # Compute loss on k-space
-            loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, output_kspace)
 
-            loss = sum(loss_dict.values())  # type: ignore
+                output_image = T.modulus(
+                    T.reduce_operator(
+                        self.backward_operator(output_kspace, dim=self._spatial_dims),
+                        data["sensitivity_map"],
+                        self._coil_dim,
+                    )
+                )
 
-        if self.model.training:
-            self._scaler.scale(loss).backward()
+            loss_dict = detach_dict(loss_dict)  # Detach dict, only used for logging.
 
-        loss_dict = detach_dict(loss_dict)  # Detach dict, only used for logging.
-
-        output_image = output_images[-1]
         return DoIterationOutput(
             output_image=output_image,
             sensitivity_map=data["sensitivity_map"],
@@ -131,17 +173,7 @@ class VSharpNet3DEngine(MRIModelEngine):
         )  # shape (batch, height,  width, complex[=2])
 
         output_image = output_images[-1]
-        output_kspace = data["masked_kspace"] + T.apply_mask(
-            T.apply_padding(
-                self.forward_operator(
-                    T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim),
-                    dim=self._spatial_dims,
-                ),
-                padding=data.get("padding", None),
-            ),
-            ~data["sampling_mask"],
-            return_mask=False,
-        )
+        output_kspace = None
 
         return output_images, output_kspace
 
