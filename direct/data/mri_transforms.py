@@ -197,9 +197,7 @@ class RandomFlip(DirectTransform):
                 else (
                     (-1,)
                     if self.flip == "vertical"
-                    else (-2, -1)
-                    if self.flip == "both"
-                    else (random.SystemRandom().choice([-2, -1]),)
+                    else ((-2, -1) if self.flip == "both" else (random.SystemRandom().choice([-2, -1]),))
                 )
             )
 
@@ -226,7 +224,7 @@ class RandomReverse(DirectTransform):
         Parameters
         ----------
         dim : int
-            Dimension along to perform reversion. Typically, this is for time or slice dimension. Default: 2.
+            Dimension along to perform reversion. Typically, this is for time or slice dimension. Default: 1.
         p : float
             Probability of flip. Default: 0.5
         keys_to_reverse : tuple of TransformKeys
@@ -268,6 +266,101 @@ class RandomReverse(DirectTransform):
                     tensor = tensor[tuple(index)]
 
                     sample[key] = T.view_as_real(tensor)
+
+        return sample
+
+
+class RandomDropType(DirectTransform):
+    RANDOM = "random"
+    BEGINNING = "beginning"
+    END = "end"
+
+
+class RandomDrop(DirectTransform):
+    r"""Random drop of a percentage of data along a specified dimension of a PyTorch tensor.
+
+    This can be useful for reducing the amount of memory needed for training, for example, in the case of
+    big data samples. Dropping can be random, from the beginning or from the end of the tensor.
+    """
+
+    def __init__(
+        self,
+        dim: int = 1,
+        percentage: float = 0.9,
+        p: float = 0.5,
+        key_to_drop_percentage: TransformKey = TransformKey.KSPACE,
+        other_keys_to_drop_percentage: tuple[TransformKey, ...] = (TransformKey.KSPACE,),
+        drop_type: RandomDropType = RandomDropType.RANDOM,
+    ) -> None:
+        r"""Inits :class:`RandomDrop`.
+
+        Parameters
+        ----------
+        dim : int
+            Dimension along to perform drop. Typically, this is for time or slice dimension. Default: 1.
+        percentage : float
+            Percentage of data to drop. Default: 0.9.
+        p : float
+            Probability of drop. Default: 0.5
+        key_to_drop_percentage : TransformKey
+            Key to drop. Default: TransformKey.KSPACE.
+        other_keys_to_drop_percentage : tuple of TransformKeys
+            Other keys to drop. Default: (TransformKey.KSPACE,).
+        drop_type : RandomDropType
+            Type of drop. Default: RandomDropType.RANDOM.
+        """
+        super().__init__()
+
+        self.dim = dim
+        self.percentage = percentage
+        self.p = p
+        self.key_to_drop_percentage = key_to_drop_percentage
+        self.other_keys_to_drop_percentage = other_keys_to_drop_percentage
+        self.drop_type = drop_type
+
+    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
+        """Calls :class:`RandomDrop`.
+
+        Parameters
+        ----------
+        sample: dict[str, Any]
+            Dict sample.
+
+        Returns
+        -------
+        dict[str, Any]
+            Sample with a dropped percentage of values of `key_to_drop_percentage` and `other_keys_to_drop_percentage`.
+        """
+        if random.SystemRandom().random() <= self.p:
+            dim = self.dim
+            tensor = sample[self.key_to_drop_percentage].clone()
+            if dim < 0:
+                dim += tensor.dim()
+
+            if dim >= tensor.ndim:
+                raise ValueError(f"Dimension {dim} is out of bounds for key {self.key_to_drop_percentage}.")
+
+            # Calculate number of elements to keep per slice
+            num_elements = tensor.shape[dim]
+            num_to_keep = int(num_elements * self.percentage)
+
+            if self.drop_type == RandomDropType.RANDOM:
+                keep_indices = torch.randperm(num_elements)[:num_to_keep]
+            elif self.drop_type == RandomDropType.BEGINNING:
+                keep_indices = torch.arange(num_to_keep)
+            elif self.drop_type == RandomDropType.END:
+                keep_indices = torch.arange(num_elements - num_to_keep, num_elements)
+
+            sample[self.key_to_drop_percentage] = tensor.index_select(dim, keep_indices)
+
+            for key in self.other_keys_to_drop_percentage:
+                if key in sample:
+                    sample[key] = sample[key].index_select(dim, keep_indices)
+
+            if "reconstruction_size" in sample:
+                reconstruction_size = list(sample["reconstruction_size"])
+                reconstruction_size[dim - 1] = num_to_keep
+                sample["reconstruction_size"] = tuple(reconstruction_size)
 
         return sample
 
@@ -550,10 +643,12 @@ class CropKspace(DirectTransform):
 
         if "sampling_mask" in sample:
             sample["sampling_mask"] = T.complex_center_crop(
-                sample["sampling_mask"], (1,) + tuple(crop_shape)[1:] if kspace.ndim == 5 else crop_shape
+                sample["sampling_mask"],
+                (1,) + tuple(crop_shape)[1:] if kspace.ndim == 5 else crop_shape,
             )
             sample["acs_mask"] = T.complex_center_crop(
-                sample["acs_mask"], (1,) + tuple(crop_shape)[1:] if kspace.ndim == 5 else crop_shape
+                sample["acs_mask"],
+                (1,) + tuple(crop_shape)[1:] if kspace.ndim == 5 else crop_shape,
             )
 
         # Compute new k-space for the cropped_backprojected_kspace
@@ -1560,9 +1655,12 @@ def build_pre_mri_transforms(
             )
         ]
     if mask_func:
+        if padding_eps > 0.0:
+            mri_transforms += [
+                ComputeZeroPadding(KspaceKey.KSPACE, "padding", padding_eps),
+                ApplyZeroPadding(KspaceKey.KSPACE, "padding"),
+            ]
         mri_transforms += [
-            ComputeZeroPadding(KspaceKey.KSPACE, "padding", padding_eps),
-            ApplyZeroPadding(KspaceKey.KSPACE, "padding"),
             CreateSamplingMask(
                 mask_func,
                 shape=(None if (isinstance(crop, str)) else crop),
@@ -1700,6 +1798,9 @@ def build_supervised_mri_transforms(
     random_flip_type: Optional[RandomFlipType] = RandomFlipType.RANDOM,
     random_flip_probability: float = 0.0,
     random_reverse_probability: float = 0.0,
+    random_context_drop_probability: float = 0.0,
+    random_context_drop_percentage: float = 0.8,
+    random_context_drop_type: RandomDropType = RandomDropType.RANDOM,
     padding_eps: float = 0.0001,
     estimate_body_coil_image: bool = False,
     estimate_sensitivity_maps: bool = True,
@@ -1763,8 +1864,17 @@ def build_supervised_mri_transforms(
         If greater than 0.0, random rotation of `random_flip_type` type, with probability `random_flip_probability`.
         Default: 0.0.
     random_reverse_probability : float
-        If greater than 0.0, will perform random reversion along the time or slice dimension (2) with probability
+        If greater than 0.0, will perform random reversion along the time or slice dimension (1) with probability
         `random_reverse_probability`. Default: 0.0.
+    random_context_drop_probability : float
+        If greater than 0.0, will perform random context drop along the time or slice dimension (1) with probability
+        `random_context_drop_probability`. Default: 0.0.
+    random_context_drop_percentage : float
+        If `random_context_drop_probability` is greater than 0.0, will perform random context drop along the time or
+        slice dimension (1) with percentage `random_context_drop_percentage`. Default: 0.0.
+    random_context_drop_type : RandomDropType
+        If `random_context_drop_probability` is greater than 0.0, will perform random context drop along the time or
+        slice dimension (1) with type `random_context_drop_type`. Default: RandomDropType.RANDOM.
     padding_eps: float
         Padding epsilon. Default: 0.0001.
     estimate_body_coil_image : bool
@@ -1842,9 +1952,12 @@ def build_supervised_mri_transforms(
             )
         ]
     if mask_func:
+        if padding_eps > 0:
+            mri_transforms += [
+                ComputeZeroPadding(KspaceKey.KSPACE, "padding", padding_eps),
+                ApplyZeroPadding(KspaceKey.KSPACE, "padding"),
+            ]
         mri_transforms += [
-            ComputeZeroPadding(KspaceKey.KSPACE, "padding", padding_eps),
-            ApplyZeroPadding(KspaceKey.KSPACE, "padding"),
             CreateSamplingMask(
                 mask_func,
                 shape=(None if (isinstance(crop, str)) else crop),
@@ -1852,6 +1965,20 @@ def build_supervised_mri_transforms(
                 return_acs=estimate_sensitivity_maps,
                 dynamic_mask=dynamic_mask,
             ),
+        ]
+    if random_context_drop_probability > 0.0:
+        mri_transforms += [
+            RandomDrop(
+                drop_type=random_context_drop_type,
+                p=random_context_drop_probability,
+                percentage=random_context_drop_percentage,
+                key_to_drop_percentage=TransformKey.KSPACE,
+                other_keys_to_drop_percentage=(
+                    TransformKey.SAMPLING_MASK,
+                    TransformKey.ACS_MASK,
+                    TransformKey.SENSITIVITY_MAP,
+                ),
+            )
         ]
 
     if pad_coils:
@@ -1887,7 +2014,9 @@ def build_supervised_mri_transforms(
 
     mri_transforms += [
         ComputeScalingFactor(
-            normalize_key=scaling_key, percentile=scale_percentile, scaling_factor_key=TransformKey.SCALING_FACTOR
+            normalize_key=scaling_key,
+            percentile=scale_percentile,
+            scaling_factor_key=TransformKey.SCALING_FACTOR,
         ),
         Normalize(
             scaling_factor_key=TransformKey.SCALING_FACTOR,
@@ -1932,6 +2061,9 @@ def build_mri_transforms(
     random_flip_type: Optional[RandomFlipType] = RandomFlipType.RANDOM,
     random_flip_probability: float = 0.0,
     random_reverse_probability: float = 0.0,
+    random_context_drop_probability: float = 0.0,
+    random_context_drop_percentage: float = 0.8,
+    random_context_drop_type: RandomDropType = RandomDropType.RANDOM,
     padding_eps: float = 0.0001,
     estimate_body_coil_image: bool = False,
     estimate_sensitivity_maps: bool = True,
@@ -2003,8 +2135,17 @@ def build_mri_transforms(
         If greater than 0.0, random rotation of `random_flip_type` type, with probability `random_flip_probability`.
         Default: 0.0.
     random_reverse_probability : float
-        If greater than 0.0, will perform random reversion along the time or slice dimension (2) with probability
+        If greater than 0.0, will perform random reversion along the time or slice dimension (1) with probability
         `random_reverse_probability`. Default: 0.0.
+    random_context_drop_probability : float
+        If greater than 0.0, will perform random context drop along the time or slice dimension (1) with probability
+        `random_context_drop_probability`. Default: 0.0.
+    random_context_drop_percentage : float
+        If `random_context_drop_probability` is greater than 0.0, will perform random context drop along the time or
+        slice dimension (1) with percentage `random_context_drop_percentage`. Default: 0.0.
+    random_context_drop_type : RandomDropType
+        If `random_context_drop_probability` is greater than 0.0, will perform random context drop along the time or
+        slice dimension (1) with type `random_context_drop_type`. Default: RandomDropType.RANDOM.
     padding_eps: float
         Padding epsilon. Default: 0.0001.
     estimate_body_coil_image : bool
@@ -2086,6 +2227,9 @@ def build_mri_transforms(
         random_flip_type=random_flip_type,
         random_flip_probability=random_flip_probability,
         random_reverse_probability=random_reverse_probability,
+        random_context_drop_probability=random_context_drop_probability,
+        random_context_drop_percentage=random_context_drop_percentage,
+        random_context_drop_type=random_context_drop_type,
         padding_eps=padding_eps,
         estimate_sensitivity_maps=estimate_sensitivity_maps,
         sensitivity_maps_type=sensitivity_maps_type,
@@ -2095,8 +2239,8 @@ def build_mri_transforms(
         sensitivity_maps_espirit_kernel_size=sensitivity_maps_espirit_kernel_size,
         sensitivity_maps_espirit_crop=sensitivity_maps_espirit_crop,
         sensitivity_maps_espirit_max_iters=sensitivity_maps_espirit_max_iters,
-        delete_acs_mask=delete_acs_mask if transforms_type == TransformsType.SUPERVISED else False,
-        delete_kspace=delete_kspace if transforms_type == TransformsType.SUPERVISED else False,
+        delete_acs_mask=(delete_acs_mask if transforms_type == TransformsType.SUPERVISED else False),
+        delete_kspace=(delete_kspace if transforms_type == TransformsType.SUPERVISED else False),
         image_recon_type=image_recon_type,
         pad_coils=pad_coils,
         scaling_key=scaling_key,

@@ -867,6 +867,7 @@ class CMRxRecon2024Dataset(Dataset):
         kspace_context: Optional[str] = None,
         square_acs: bool = False,
         context_percentage: Optional[float] = None,
+        context_percentage_last: Optional[bool] = None,
     ) -> None:
         """Inits :class:`CMRxReconDataset`.
 

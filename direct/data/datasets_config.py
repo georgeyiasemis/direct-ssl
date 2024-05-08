@@ -12,6 +12,7 @@ from direct.config.defaults import BaseConfig
 from direct.data.mri_transforms import (
     HalfSplitType,
     MaskSplitterType,
+    RandomDropType,
     RandomFlipType,
     ReconstructionType,
     SensitivityMapType,
@@ -44,6 +45,9 @@ class RandomAugmentationTransformsConfig(BaseConfig):
     random_flip_type: Optional[RandomFlipType] = RandomFlipType.RANDOM
     random_flip_probability: float = 0.0
     random_reverse_probability: float = 0.0
+    random_context_drop_probability: float = 0.0
+    random_context_drop_percentage: float = 0.8
+    random_context_drop_type: RandomDropType = RandomDropType.RANDOM
 
 
 @dataclass
