@@ -64,9 +64,9 @@ class VSharpNet3DEngine(MRIModelEngine):
 
     def _do_iteration(
         self,
-        data: Dict[str, Any],
-        loss_fns: Optional[Dict[str, Callable]] = None,
-        regularizer_fns: Optional[Dict[str, Callable]] = None,
+        data: dict[str, Any],
+        loss_fns: Optional[dict[str, Callable]] = None,
+        regularizer_fns: Optional[dict[str, Callable]] = None,
     ) -> DoIterationOutput:
         """Performs forward method and calculates loss functions.
 
@@ -136,7 +136,7 @@ class VSharpNet3DEngine(MRIModelEngine):
             data_dict={**loss_dict},
         )
 
-    def forward_function(self, data: Dict[str, Any]) -> Tuple[torch.Tensor, None]:
+    def forward_function(self, data: dict[str, Any]) -> tuple[torch.Tensor, None]:
         data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
 
         output_images = self.model(
