@@ -345,7 +345,8 @@ class RandomDrop(DirectTransform):
             num_to_keep = int(num_elements * self.percentage)
 
             if self.drop_type == RandomDropType.RANDOM:
-                keep_indices = torch.randperm(num_elements)[:num_to_keep]
+                # Random but sort so we don't have something like [1, 2, 3, 4, 5, 6] -> [4, 3, 1, 5]
+                keep_indices = torch.randperm(num_elements)[:num_to_keep].sort().values
             elif self.drop_type == RandomDropType.BEGINNING:
                 keep_indices = torch.arange(num_to_keep)
             elif self.drop_type == RandomDropType.END:
@@ -642,13 +643,16 @@ class CropKspace(DirectTransform):
         cropped_backprojected_kspace = self.crop_func(**cropper_args)
 
         if "sampling_mask" in sample:
+            if kspace.ndim == 5 and sample["sampling_mask"].size(1) == 1:
+                crop_shape = (1,) + tuple(crop_shape)[1:]
+
             sample["sampling_mask"] = T.complex_center_crop(
                 sample["sampling_mask"],
-                (1,) + tuple(crop_shape)[1:] if kspace.ndim == 5 else crop_shape,
+                crop_shape,
             )
             sample["acs_mask"] = T.complex_center_crop(
                 sample["acs_mask"],
-                (1,) + tuple(crop_shape)[1:] if kspace.ndim == 5 else crop_shape,
+                crop_shape,
             )
 
         # Compute new k-space for the cropped_backprojected_kspace
