@@ -361,7 +361,7 @@ class RandomDrop(DirectTransform):
 
             for key in self.other_keys_to_drop_percentage:
                 if key in sample:
-                    if sample[key].shape[dim] > num_elements:
+                    if sample[key].shape[dim] > num_to_keep:
                         sample[key] = sample[key].index_select(dim, keep_indices)
 
             if "reconstruction_size" in sample:
