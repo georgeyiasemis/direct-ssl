@@ -8,9 +8,11 @@ import bisect
 import contextlib
 import logging
 import pathlib
+import random
 import sys
 import xml.etree.ElementTree as etree  # nosec
 from enum import Enum
+from math import ceil
 from typing import Any, Callable, Optional, Sequence, Union
 
 import h5py
@@ -31,7 +33,8 @@ __all__ = [
     "build_dataset_from_input",
     "CalgaryCampinasDataset",
     "ConcatDataset",
-    "CMRxReconDataset",
+    "CMRxRecon2023Dataset",
+    "CMRxRecon2024Dataset",
     "FastMRIDataset",
     "FakeMRIBlobsDataset",
     "SheppLoganDataset",
@@ -49,6 +52,15 @@ def temp_seed(rng, seed) -> None:
         yield
     finally:
         rng.set_state(state)
+
+
+def _explicit_zero_padding(kspace, padding_left, padding_right):
+    if padding_left > 0:
+        kspace[..., 0:padding_left] = 0 + 0 * 1j
+    if padding_right > 0:
+        kspace[..., padding_right:] = 0 + 0 * 1j
+
+    return kspace
 
 
 def _et_query(
@@ -436,7 +448,7 @@ class FastMRIDataset(H5SliceData):
         return mask
 
 
-class CMRxReconDataset(Dataset):
+class CMRxRecon2023Dataset(Dataset):
     """CMRxRecon Challenge 2023 Dataset [1]_.
 
     Assuming the instructions in ``direct/projects/CMRxRecon`` have been followed, this dataset can be loaded
@@ -806,6 +818,415 @@ class CMRxReconDataset(Dataset):
             sample["reconstruction_size"] = (context_size,) + sample["reconstruction_size"]
             # If context put coil dim first
             sample["kspace"] = np.swapaxes(sample["kspace"], 0, 1)
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample
+
+
+class CMRxRecon2024Dataset(Dataset):
+    # pylint: disable=too-many-arguments
+
+    NUM_ACS_LINES = 16
+    VALID_CHALLENGE_MASKS = {
+        "mask_Uniform10",
+        "mask_Uniform4",
+        "mask_Uniform8",
+        "mask_ktGaussian12",
+        "mask_ktGaussian16",
+        "mask_ktGaussian20",
+        "mask_ktGaussian24",
+        "mask_ktGaussian4",
+        "mask_ktGaussian8",
+        "mask_ktRadial12",
+        "mask_ktRadial16",
+        "mask_ktRadial20",
+        "mask_ktRadial24",
+        "mask_ktRadial4",
+        "mask_ktRadial8",
+        "mask_ktUniform12",
+        "mask_ktUniform16",
+        "mask_ktUniform20",
+        "mask_ktUniform24",
+        "mask_ktUniform4",
+        "mask_ktUniform8",
+    }
+
+    def __init__(
+        self,
+        data_root: pathlib.Path,
+        transform: Optional[Callable[[tuple[Any, ...]], dict]] = None,
+        filenames_filter: Optional[list[PathOrString]] = None,
+        filenames_lists: Optional[list[PathOrString]] = None,
+        filenames_lists_root: Optional[PathOrString] = None,
+        kspace_key: str = "kspace_full",
+        extra_keys: Optional[tuple[str]] = None,
+        text_description: Optional[str] = None,
+        compute_mask: bool = False,
+        kspace_context: Optional[str] = None,
+        acs_type: str = "line",
+    ) -> None:
+        """Inits :class:`CMRxReconDataset`.
+
+        Parameters
+        ----------
+        data_root : pathlib.Path
+            Root directory to data.
+        transform : Callable, optional
+            A list of transforms to be applied on the generated samples. Default is None.
+        filenames_filter : list[PathOrString], optional
+            List of filenames to include in the dataset, should be the same as the ones that can be derived from a glob
+            on the root. If set, will skip searching for files in the root. Default: None.
+        filenames_lists : list[PathOrString], optional
+            List of paths pointing to `.lst` file(s) that contain file-names in `root` to filter.
+            Should be the same as the ones that can be derived from a glob on the root. If this is set,
+            this will override the `filenames_filter` option if not None. Default: None.
+        filenames_lists_root : PathOrString, optional
+            Root of `filenames_lists`. Ignored if `filename_lists` is None. Default: None.
+        kspace_key : str
+            Key to load the k-space. Typically, 'kspace_full' for fully-sampled data, or 'kspace_subxx'
+            (xx can be '04', '08' or '10) for sub-sampled data. Default: 'kspace_full'.
+        extra_keys: tuple of strings, optional
+            Add extra keys in h5 file to output. May be used to load sampling masks, e.g. "maskxx".
+            Note that this should contain at most one of the following "mask04", "mask08" or "mask10". Default: None.
+        text_description: str
+            Description of dataset, can be useful for logging.
+        compute_mask : bool
+            If True, it will compute the sampling mask from data. This should be typically True at inference, where
+            data are already undersampled. This will also compute `acs_mask`, which is by default the 24
+            center lines. Default: False.
+        kspace_context : str, optional
+            Can be either None, "time" or "slice". If None, data will be loaded per slice or time-frame (2D data).
+            If "time", all time frames(phases) per slice will be loaded (3D data). If "slice", all sliced per time frame
+            will be loaded (3D data). Default: None.
+        sample_acs : str, optional
+            Type of ACS lines to sample. Can be either "line", "square" or "auto". Default: "line".
+        """
+        self.logger = logging.getLogger(type(self).__name__)
+
+        self.root = pathlib.Path(data_root)
+        self.filenames_filter = filenames_filter
+
+        self.text_description = text_description
+
+        self.kspace_key = kspace_key
+
+        self.data: list[tuple] = []
+
+        self.volume_indices: dict[pathlib.Path, range] = {}
+
+        if kspace_context not in [None, "slice", "time"]:
+            raise ValueError(
+                f"Attribute `kspace_context` can be None for 2D data or 'slice' or 'time for 3D. "
+                f"Received {kspace_context}."
+            )
+
+        self.kspace_context = kspace_context
+
+        self.ndim = 2 if self.kspace_context is None else 3
+
+        # If filenames_filter and filenames_lists are given, it will load files in filenames_filter
+        # and filenames_lists will be ignored.
+        if filenames_filter is None:
+            if filenames_lists is not None:
+                if filenames_lists_root is None:
+                    e = "`filenames_lists` is passed but `filenames_lists_root` is None."
+                    self.logger.error(e)
+                    raise ValueError(e)
+                filenames = get_filenames_for_datasets(
+                    lists=filenames_lists, files_root=filenames_lists_root, data_root=data_root
+                )
+                self.logger.info("Attempting to load %s filenames from list(s).", len(filenames))
+            else:
+                self.logger.info("Parsing directory %s for mat files.", self.root)
+                filenames = list(self.root.glob("*.mat"))
+        else:
+            self.logger.info("Attempting to load %s filenames.", len(filenames_filter))
+            filenames = filenames_filter
+
+        filenames = [pathlib.Path(_) for _ in filenames]
+
+        if len(filenames) == 0:
+            warn = (
+                f"Found 0 mat files in directory {self.root}."
+                if not self.text_description
+                else f"Found 0 mat files in directory {self.root} for dataset {self.text_description}."
+            )
+            self.logger.warning(warn)
+        else:
+            self.logger.info("Using %s mat files in %s.", len(filenames), self.root)
+
+        self.parse_filenames_data(filenames, extra_mats=None)  # Collect information on the image masks_dict.
+
+        if extra_keys:
+            difference = set(extra_keys) - self.VALID_CHALLENGE_MASKS
+            if difference != set():
+                raise ValueError(
+                    f"Only mask names in {self.VALID_CHALLENGE_MASKS} can be specified in 'extra_keys'. "
+                    f"Received {difference}."
+                )
+
+            # intersect_keys = self.VALID_CHALLENGE_MASKS.intersection(extra_keys)
+            # if len(intersect_keys) > 1:
+            #     raise ValueError(
+            #         f"Only one of {self.VALID_CHALLENGE_MASKS} can be specified in 'extra_keys'. "
+            #         f"Received {extra_keys}."
+            #     )
+
+        self.extra_keys = extra_keys
+
+        self.compute_mask = compute_mask
+        self.acs_type = acs_type
+
+        self.transform = transform
+
+        if self.text_description:
+            self.logger.info("Dataset description: %s.", self.text_description)
+
+    def parse_filenames_data(self, filenames: list[pathlib.Path], extra_mats: tuple[str] = None) -> None:
+        """Parse the filenames and collect information on the image masks_dict.
+
+        Will collect information on the image masks_dict and store it in the volume_indices attribute.
+
+        Parameters
+        ----------
+        filenames : list[pathlib.Path]
+            List of filenames to parse.
+        extra_mats : tuple[str], optional
+            Tuple of keys of the extra mats to verify. Default is None.
+
+        Raises
+        ------
+        OSError
+            If the filename does not exist.
+        """
+        current_slice_number = 0  # This is required to keep track of where a volume is in the dataset
+
+        for idx, filename in enumerate(filenames):
+            if len(filenames) < 5 or idx % (len(filenames) // 5) == 0 or len(filenames) == (idx + 1):
+                self.logger.info("Parsing: {:.2f}%.".format((idx + 1) / len(filenames) * 100))
+            try:
+                if not filename.exists():
+                    raise OSError(f"{filename} does not exist.")
+                kspace_shape = h5py.File(filename, "r")[self.kspace_key].shape
+                if len(kspace_shape) == 4:
+                    kspace_shape = (1,) + kspace_shape  # BlackBlood data is of shape(nz, nc, ny, nx)
+                self.verify_extra_mat_integrity(filename, extra_mats=extra_mats)
+            except FileNotFoundError as exc:
+                self.logger.warning("%s not found. Failed with: %s. Skipping...", filename, exc)
+                continue
+            except OSError as exc:
+                self.logger.warning("%s failed with OSError: %s. Skipping...", filename, exc)
+                continue
+
+            if self.kspace_context is None:
+                num_slices = np.prod(kspace_shape[:2])
+            elif self.kspace_context == "slice":
+                # Slice dimension
+                num_slices = kspace_shape[0]
+            else:
+                # Time dimension
+                num_slices = kspace_shape[1]
+
+            self.data += [(filename, slc) for slc in range(num_slices)]
+
+            self.volume_indices[filename] = range(current_slice_number, current_slice_number + num_slices)
+
+            current_slice_number += num_slices
+
+    @staticmethod
+    def verify_extra_mat_integrity(filename: pathlib.Path, extra_mats: tuple[str]) -> None:
+        """Verify the integrity of the extra mats by checking the shape of the data.
+
+        Parameters
+        ----------
+        filename : pathlib.Path
+            Path to the mat file.
+        extra_mats : tuple[str]
+            Tuple of keys of the extra mats to verify.
+        """
+        if not extra_mats:
+            return
+
+        for key in extra_mats:
+            mat_key, path = extra_mats[key]
+            extra_fn = path / filename.name
+            with h5py.File(extra_fn, "r") as file:
+                _ = file[mat_key].shape
+            return
+
+    def __len__(self) -> int:
+        """Return the length of the dataset.
+
+        Returns
+        -------
+        int
+            The length of the dataset.
+        """
+        return len(self.data)
+
+    def get_slice_data(
+        self, filename: PathOrString, slice_no: int, key: str, extra_keys=None
+    ) -> tuple[np.ndarray, Any]:
+        """Get slice data from the mat file.
+
+        This function will return the slice data from the mat file. If extra_keys are provided, it will also return
+        the data from the extra keys.
+
+        Parameters
+        ----------
+        filename : PathOrString
+            Path to the mat file.
+        slice_no : int
+            Slice number (corresponding to dataset index) to retrieve.
+        key : str
+            Key to load the data from the mat file.
+        extra_keys : _type_, optional
+            Extra keys to load from the mat file. Default is None.
+
+        Returns
+        -------
+        tuple[np.ndarray, Any]
+            The retrieved data and the extra data.
+        """
+        data = h5py.File(filename, "r")
+        kspace_data = data[key]
+        shape = kspace_data.shape
+
+        if self.kspace_context is None:
+            if len(shape) == 4:
+                curr_data = np.array(kspace_data[slice_no])
+            else:
+                inds = {
+                    (i): (k, l) for i, (k, l) in enumerate([(k, l) for k in range(shape[0]) for l in range(shape[1])])
+                }
+                ind = inds[slice_no]
+                curr_data = np.array(kspace_data[ind[0]][ind[1]])
+        elif self.kspace_context == "slice":
+            # Slice dimension
+            if len(shape) == 4:
+                curr_data = np.array(kspace_data)
+            else:
+                curr_data = np.array(kspace_data[slice_no])
+        else:
+            # Time dimension
+            if len(shape) == 4:
+                curr_data = np.array(kspace_data[slice_no])[None]
+            else:
+                curr_data = np.array(kspace_data[:, slice_no])
+
+        extra_data = {}
+
+        if extra_keys:
+            for extra_key in self.extra_keys:
+                extra_data[extra_key] = data[extra_key][()]
+
+                # If kspace context is None or slice and kt mask, get the corresponding time frame mask
+                if self.kspace_context != "time" and extra_data[extra_key].ndim == 3:
+                    if self.kspace_context is None:
+                        extra_data[extra_key] = extra_data[extra_key][inds[slice_no][0]]
+                    else:
+                        extra_data[extra_key] = extra_data[extra_key][slice_no]
+
+        data.close()
+        return curr_data, extra_data
+
+    def __getitem__(self, idx: int) -> dict[str, Any]:
+        """Get a sample from the dataset.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the sample to retrieve.
+
+        Returns
+        -------
+        dict[str, Any]
+            A dictionary containing the sample data.
+        """
+        filename, slice_no = self.data[idx]
+        filename = pathlib.Path(filename)
+
+        kspace, extra_data = self.get_slice_data(filename, slice_no, key=self.kspace_key, extra_keys=self.extra_keys)
+
+        kspace = kspace["real"] + 1j * kspace["imag"]
+        kspace = np.swapaxes(kspace, -1, -2)
+
+        if self.kspace_context:
+            # If context put coil dim first
+            kspace = np.swapaxes(kspace, 0, 1)
+
+        shape = kspace.shape
+
+        sample = {"kspace": kspace, "filename": str(filename), "slice_no": slice_no}
+
+        if self.compute_mask or (any("mask" in key for key in extra_data)):
+            nx, ny = shape[-2:]
+
+            if self.kspace_context:  # slice or time dim
+                n = shape[-3]
+
+            if self.compute_mask:
+                sampling_mask = np.abs(kspace).sum(0) != 0
+
+                acs_mask = np.zeros(sampling_mask.shape, dtype=bool)
+
+                if self.acs_type == "auto":
+                    if "radial" in sample["filename"].lower():
+                        acs_mask[
+                            ...,
+                            nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
+                            ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
+                        ] = True
+                    else:
+                        acs_mask[..., ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2] = True
+                else:
+                    if self.acs_type == "square":
+                        acs_mask[
+                            ...,
+                            nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
+                            ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
+                        ] = True
+                    else:
+                        acs_mask[..., ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2] = True
+
+            else:
+                # Get the mask key.
+                mask_key = random.choice([key for key in extra_data if "mask" in key])
+                sampling_mask = np.array(extra_data[mask_key]).astype(bool)
+                sampling_mask = np.swapaxes(sampling_mask, -1, -2)
+                if self.kspace_context and sampling_mask.ndim == 2:
+                    # If kspace context, repeat the mask for all slices or time frames.
+                    # If time this is consistent with kt masks
+                    sampling_mask = np.tile(sampling_mask, (n, 1, 1))
+
+                for key in self.VALID_CHALLENGE_MASKS:
+                    if key in extra_data:
+                        del extra_data[key]
+
+                acs_mask = np.zeros(sampling_mask.shape, dtype=bool)
+
+                if "radial" in mask_key.lower():
+                    acs_mask[
+                        ...,
+                        nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
+                        ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
+                    ] = True
+                else:
+                    acs_mask[..., ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2] = True
+
+            # Add coil (first) and complex (last) dimensions
+            sample["sampling_mask"] = sampling_mask[np.newaxis, ..., np.newaxis]
+            sample["acs_mask"] = acs_mask[np.newaxis, ..., np.newaxis]
+
+        sample.update(extra_data)
+
+        sample["reconstruction_size"] = (int(np.round(shape[-2] / 3)), int(np.round(shape[-1] / 2)), 1)
+
+        if self.kspace_context:
+            # Add context dimension in reconstruction size without any crop
+            sample["reconstruction_size"] = (shape[1],) + sample["reconstruction_size"]
 
         if self.transform:
             sample = self.transform(sample)

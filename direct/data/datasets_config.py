@@ -14,6 +14,7 @@ from direct.config.defaults import BaseConfig
 from direct.data.mri_transforms import (
     HalfSplitType,
     MaskSplitterType,
+    RandomDropType,
     RandomFlipType,
     ReconstructionType,
     RescaleMode,
@@ -55,6 +56,9 @@ class RandomAugmentationTransformsConfig(BaseConfig):
     random_flip_type: Optional[RandomFlipType] = RandomFlipType.RANDOM
     random_flip_probability: float = 0.0
     random_reverse_probability: float = 0.0
+    random_context_drop_probability: float = 0.0
+    random_context_drop_percentage: float = 0.5
+    random_context_drop_type: RandomDropType = RandomDropType.RANDOM_CONTINUOUS
 
 
 @dataclass
@@ -76,7 +80,8 @@ class TransformsConfig(BaseConfig):
     augmentation : AugmentationTransformConfig
         Configuration for the augmentation. Currently only rescale and pad are supported.
     random_augmentations : RandomAugmentationTransformsConfig
-        Configuration for the random augmentations. Currently only random rotation, flip and reverse are supported.
+        Configuration for the random augmentations. Currently only random rotation, flip, drop context
+        and reverse are supported.
     padding_eps : float
         Padding epsilon. Default is 0.001.
     estimate_body_coil_image : bool
@@ -170,7 +175,7 @@ class H5SliceConfig(DatasetConfig):
 
 
 @dataclass
-class CMRxReconConfig(DatasetConfig):
+class CMRxRecon2023Config(DatasetConfig):
     regex_filter: Optional[str] = None
     data_root: Optional[str] = None
     filenames_filter: Optional[list[str]] = None
@@ -180,6 +185,19 @@ class CMRxReconConfig(DatasetConfig):
     compute_mask: bool = False
     extra_keys: Optional[list[str]] = None
     kspace_context: Optional[str] = None
+
+
+class CMRxRecon2024Config(DatasetConfig):
+    regex_filter: Optional[str] = None
+    data_root: Optional[str] = None
+    filenames_filter: Optional[list[str]] = None
+    filenames_lists: Optional[list[str]] = None
+    filenames_lists_root: Optional[str] = None
+    kspace_key: str = "kspace_full"
+    compute_mask: bool = False
+    extra_keys: Optional[list[str]] = None
+    kspace_context: Optional[str] = None
+    square_acs: bool = False
 
 
 @dataclass

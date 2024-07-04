@@ -270,6 +270,108 @@ class RandomReverse(DirectTransform):
         return sample
 
 
+class RandomDropType(DirectEnum):
+    RANDOM = "random"
+    RANDOM_CONTINUOUS = "random_continuous"
+    BEGINNING = "beginning"
+    END = "end"
+
+
+class RandomDrop(DirectTransform):
+    r"""Random drop of a percentage of data along a specified dimension of a PyTorch tensor.
+
+    This can be useful for reducing the amount of memory needed for training, for example, in the case of
+    big data samples. Dropping can be random, from the beginning or from the end of the tensor.
+    """
+
+    def __init__(
+        self,
+        dim: int = 1,
+        percentage: float = 0.9,
+        p: float = 0.5,
+        key_to_drop_percentage: TransformKey = TransformKey.KSPACE,
+        other_keys_to_drop_percentage: tuple[TransformKey, ...] = (TransformKey.KSPACE,),
+        drop_type: RandomDropType = RandomDropType.RANDOM,
+    ) -> None:
+        r"""Inits :class:`RandomDrop`.
+
+        Parameters
+        ----------
+        dim : int
+            Dimension along to perform drop. Typically, this is for time or slice dimension. Default: 1.
+        percentage : float
+            Percentage of data to drop. Default: 0.9.
+        p : float
+            Probability of drop. Default: 0.5
+        key_to_drop_percentage : TransformKey
+            Key to drop. Default: TransformKey.KSPACE.
+        other_keys_to_drop_percentage : tuple of TransformKeys
+            Other keys to drop. Default: (TransformKey.KSPACE,).
+        drop_type : RandomDropType
+            Type of drop. Default: RandomDropType.RANDOM.
+        """
+        super().__init__()
+
+        self.dim = dim
+        self.percentage = percentage
+        self.p = p
+        self.key_to_drop_percentage = key_to_drop_percentage
+        self.other_keys_to_drop_percentage = other_keys_to_drop_percentage
+        self.drop_type = drop_type
+
+    def __call__(self, sample: dict[str, Any]) -> dict[str, Any]:
+        """Calls :class:`RandomDrop`.
+
+        Parameters
+        ----------
+        sample: dict[str, Any]
+            Dict sample.
+
+        Returns
+        -------
+        dict[str, Any]
+            Sample with a dropped percentage of values of `key_to_drop_percentage` and `other_keys_to_drop_percentage`.
+        """
+        if random.SystemRandom().random() <= self.p:
+            dim = self.dim
+            tensor = sample[self.key_to_drop_percentage].clone()
+            if dim < 0:
+                dim += tensor.dim()
+
+            if dim >= tensor.ndim:
+                raise ValueError(f"Dimension {dim} is out of bounds for key {self.key_to_drop_percentage}.")
+
+            # Calculate number of elements to keep per slice
+            num_elements = tensor.shape[dim]
+            num_to_keep = int(num_elements * self.percentage)
+
+            if self.drop_type == RandomDropType.RANDOM_CONTINUOUS:
+                # Random but continuous
+                start = random.SystemRandom().randint(0, num_elements - num_to_keep)
+                keep_indices = torch.arange(start, start + num_to_keep)
+            elif self.drop_type == RandomDropType.RANDOM:
+                # Random but sort so we don't have something like [1, 2, 3, 4, 5, 6] -> [4, 3, 1, 5]
+                keep_indices = torch.randperm(num_elements)[:num_to_keep].sort().values
+            elif self.drop_type == RandomDropType.BEGINNING:
+                keep_indices = torch.arange(num_to_keep)
+            elif self.drop_type == RandomDropType.END:
+                keep_indices = torch.arange(num_elements - num_to_keep, num_elements)
+
+            sample[self.key_to_drop_percentage] = tensor.index_select(dim, keep_indices)
+
+            for key in self.other_keys_to_drop_percentage:
+                if key in sample:
+                    if sample[key].shape[dim] > num_elements:
+                        sample[key] = sample[key].index_select(dim, keep_indices)
+
+            if "reconstruction_size" in sample:
+                reconstruction_size = list(sample["reconstruction_size"])
+                reconstruction_size[dim - 1] = num_to_keep
+                sample["reconstruction_size"] = tuple(reconstruction_size)
+
+        return sample
+
+
 class CreateSamplingMask(DirectTransform):
     """Data Transformer for training MRI reconstruction models.
 
@@ -2000,6 +2102,9 @@ def build_supervised_mri_transforms(
     random_flip_type: Optional[RandomFlipType] = RandomFlipType.RANDOM,
     random_flip_probability: float = 0.0,
     random_reverse_probability: float = 0.0,
+    random_context_drop_probability: float = 0.0,
+    random_context_drop_percentage: float = 0.8,
+    random_context_drop_type: RandomDropType = RandomDropType.RANDOM_CONTINUOUS,
     padding_eps: float = 0.0001,
     estimate_body_coil_image: bool = False,
     estimate_sensitivity_maps: bool = True,
@@ -2079,6 +2184,14 @@ def build_supervised_mri_transforms(
     random_flip_probability : float, optional
         If greater than 0.0, random rotation of `random_flip_type` type, with probability `random_flip_probability`.
         Default: 0.0.
+    random_context_drop_probability : float, optional
+        If greater than 0.0, will perform random context drop with probability `random_context_drop_probability`.
+        Default: 0.0.
+    random_context_drop_percentage : float, optional
+        Percentage of context to drop when `random_context_drop_probability` is greater than 0.0. Default: 0.8.
+    random_context_drop_type : RandomDropType, optional
+        Type of random context drop. Can be RandomDropType.RANDOM_CONTINUOUS, RandomDropType.RANDOM or
+        RandomDropType.END or RandomDropType.BEGINNING. Default: RandomDropType.RANDOM_CONTINUOUS.
     random_reverse_probability : float
         If greater than 0.0, will perform random reversion along the time or slice dimension (2) with probability
         `random_reverse_probability`. Default: 0.0.
@@ -2197,6 +2310,20 @@ def build_supervised_mri_transforms(
         ]
     if compress_coils:
         mri_transforms += [CompressCoil(num_coils=compress_coils, kspace_key=KspaceKey.KSPACE)]
+    if random_context_drop_probability > 0.0:
+        mri_transforms += [
+            RandomDrop(
+                drop_type=random_context_drop_type,
+                p=random_context_drop_probability,
+                percentage=random_context_drop_percentage,
+                key_to_drop_percentage=TransformKey.KSPACE,
+                other_keys_to_drop_percentage=(
+                    TransformKey.SAMPLING_MASK,
+                    TransformKey.ACS_MASK,
+                    TransformKey.SENSITIVITY_MAP,
+                ),
+            )
+        ]
     if pad_coils:
         mri_transforms += [PadCoilDimension(pad_coils=pad_coils, key=KspaceKey.KSPACE)]
 
@@ -2273,6 +2400,9 @@ def build_mri_transforms(
     random_flip_type: Optional[RandomFlipType] = RandomFlipType.RANDOM,
     random_flip_probability: float = 0.0,
     random_reverse_probability: float = 0.0,
+    random_context_drop_probability: float = 0.0,
+    random_context_drop_percentage: float = 0.8,
+    random_context_drop_type: RandomDropType = RandomDropType.RANDOM,
     padding_eps: float = 0.0001,
     estimate_body_coil_image: bool = False,
     estimate_sensitivity_maps: bool = True,
@@ -2360,6 +2490,14 @@ def build_mri_transforms(
     random_flip_probability : float, optional
         If greater than 0.0, random rotation of `random_flip_type` type, with probability `random_flip_probability`.
         Default: 0.0.
+    random_context_drop_probability : float, optional
+        If greater than 0.0, will perform random context drop with probability `random_context_drop_probability`.
+        Default: 0.0.
+    random_context_drop_percentage : float, optional
+        Percentage of context to drop when `random_context_drop_probability` is greater than 0.0. Default: 0.8.
+    random_context_drop_type : RandomDropType, optional
+        Type of random context drop. Can be RandomDropType.RANDOM_CONTINUOUS, RandomDropType.RANDOM or
+        RandomDropType.END or RandomDropType.BEGINNING. Default: RandomDropType.RANDOM_CONTINUOUS.
     random_reverse_probability : float
         If greater than 0.0, will perform random reversion along the time or slice dimension (2) with probability
         `random_reverse_probability`. Default: 0.0.
@@ -2461,6 +2599,9 @@ def build_mri_transforms(
         random_flip_type=random_flip_type,
         random_flip_probability=random_flip_probability,
         random_reverse_probability=random_reverse_probability,
+        random_context_drop_probability=random_context_drop_probability,
+        random_context_drop_percentage=random_context_drop_percentage,
+        random_context_drop_type=random_context_drop_type,
         padding_eps=padding_eps,
         estimate_sensitivity_maps=estimate_sensitivity_maps,
         sensitivity_maps_type=sensitivity_maps_type,
