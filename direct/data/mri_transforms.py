@@ -300,7 +300,7 @@ class RandomDrop(DirectTransform):
         dim : int
             Dimension along to perform drop. Typically, this is for time or slice dimension. Default: 1.
         percentage : float
-            Percentage of data to drop. Default: 0.9.
+            Percentage of data to keep. Default: 0.9.
         p : float
             Probability of drop. Default: 0.5
         key_to_drop_percentage : TransformKey
@@ -592,6 +592,8 @@ class CropKspace(DirectTransform):
 
         if isinstance(self.crop, IntegerListOrTupleString):
             crop_shape = IntegerListOrTupleString(self.crop)
+            if kspace.ndim == 5 and len(crop_shape) == 2:
+                crop_shape = (kspace.shape[1],) + crop_shape
         elif isinstance(self.crop, str):
             assert self.crop in sample, f"Not found {self.crop} key in sample."
             crop_shape = sample[self.crop][:-1]
