@@ -2240,6 +2240,20 @@ def build_supervised_mri_transforms(
         An MRI transformation object.
     """
     mri_transforms: list[Callable] = [ToTensor()]
+    if random_context_drop_probability > 0.0:
+        mri_transforms += [
+            RandomDrop(
+                drop_type=random_context_drop_type,
+                p=random_context_drop_probability,
+                percentage=random_context_drop_percentage,
+                key_to_drop_percentage=TransformKey.KSPACE,
+                other_keys_to_drop_percentage=(
+                    TransformKey.SAMPLING_MASK,
+                    TransformKey.ACS_MASK,
+                    TransformKey.SENSITIVITY_MAP,
+                ),
+            )
+        ]
     if crop:
         mri_transforms += [
             CropKspace(
@@ -2310,20 +2324,6 @@ def build_supervised_mri_transforms(
         ]
     if compress_coils:
         mri_transforms += [CompressCoil(num_coils=compress_coils, kspace_key=KspaceKey.KSPACE)]
-    if random_context_drop_probability > 0.0:
-        mri_transforms += [
-            RandomDrop(
-                drop_type=random_context_drop_type,
-                p=random_context_drop_probability,
-                percentage=random_context_drop_percentage,
-                key_to_drop_percentage=TransformKey.KSPACE,
-                other_keys_to_drop_percentage=(
-                    TransformKey.SAMPLING_MASK,
-                    TransformKey.ACS_MASK,
-                    TransformKey.SENSITIVITY_MAP,
-                ),
-            )
-        ]
     if pad_coils:
         mri_transforms += [PadCoilDimension(pad_coils=pad_coils, key=KspaceKey.KSPACE)]
 
