@@ -186,7 +186,7 @@ class CMRxRecon2023Config(DatasetConfig):
     extra_keys: Optional[list[str]] = None
     kspace_context: Optional[str] = None
 
-
+@dataclass
 class CMRxRecon2024Config(DatasetConfig):
     regex_filter: Optional[str] = None
     data_root: Optional[str] = None
