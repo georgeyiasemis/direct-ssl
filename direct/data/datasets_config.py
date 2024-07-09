@@ -196,7 +196,7 @@ class CMRxRecon2024Config(DatasetConfig):
     compute_mask: bool = False
     extra_keys: Optional[list[str]] = None
     kspace_context: Optional[str] = None
-    square_acs: bool = False
+    acs_type: str = "auto"
 
 
 @dataclass
