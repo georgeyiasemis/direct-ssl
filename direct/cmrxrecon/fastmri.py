@@ -163,3 +163,36 @@ def ifftshift(x: torch.Tensor, dim: Optional[List[int]] = None) -> torch.Tensor:
         shift[i] = (x.shape[dim_num] + 1) // 2
 
     return roll(x, shift, dim)
+
+
+def rss(data: torch.Tensor, dim: int = 0) -> torch.Tensor:
+    """
+    Compute the Root Sum of Squares (RSS).
+
+    RSS is computed assuming that dim is the coil dimension.
+
+    Args:
+        data: The input tensor
+        dim: The dimensions along which to apply the RSS transform
+
+    Returns:
+        The RSS value.
+    """
+    return torch.sqrt((data**2).sum(dim))
+
+
+def complex_abs(data: torch.Tensor) -> torch.Tensor:
+    """
+    Compute the absolute value of a complex valued input tensor.
+
+    Args:
+        data: A complex valued tensor, where the size of the final dimension
+            should be 2.
+
+    Returns:
+        Absolute value of data.
+    """
+    if not data.shape[-1] == 2:
+        raise ValueError("Tensor does not have separate complex dim.")
+
+    return (data**2).sum(dim=-1).sqrt()

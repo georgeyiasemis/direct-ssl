@@ -8,9 +8,8 @@ from typing import Callable, DefaultDict, Dict, Optional, Union
 import h5py  # type: ignore
 import numpy as np
 import scipy
-import torch
 
-from direct.cmrxrecon.fastmri import ifft2c
+from direct.cmrxrecon.fastmri import complex_abs, ifft2c, rss
 from direct.cmrxrecon.run4ranking import run4Ranking
 
 logger = logging.getLogger(__name__)
@@ -80,9 +79,12 @@ def write_output_to_mat(
         logger.info(f"({idx + 1}/{len(output)}): Writing {save_path}...")
 
         volume = volume.permute(0, 1, 2, 4, 3, 5)
-        reconstruction = torch.view_as_complex(ifft2c(volume))
-        reconstruction = reconstruction.numpy().astype(np.complex64)
-        reconstruction = reconstruction.transpose(4, 3, 1, 0, 2)
+        reconstruction = ifft2c(volume)
+        reconstruction = complex_abs(reconstruction)  # Compute absolute value to get a real image
+        reconstruction = rss(reconstruction, dim=1)
+
+        reconstruction = reconstruction.cpu().numpy()
+        reconstruction = reconstruction.transpose(3, 2, 0, 1)
 
         if "blood" in file_name:
             reconstruction = reconstruction[..., 0]
