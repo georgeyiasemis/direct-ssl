@@ -43,7 +43,7 @@ logging.captureWarnings(True)
 
 DoIterationOutput = namedtuple(
     "DoIterationOutput",
-    ["output_image", "sensitivity_map", "data_dict"],
+    ["output_image", "output_kspace", "sensitivity_map", "data_dict"],
 )
 
 
@@ -189,7 +189,8 @@ class Engine(ABC, DataDimensionality):
         )
         # TODO: Batch size can be much larger, perhaps have a different batch size during evaluation.
         data_loader = self.build_loader(dataset, batch_sampler=batch_sampler, num_workers=num_workers)
-        output = list(self.reconstruct_volumes(data_loader, add_target=False, crop=crop))
+        output = list(self.reconstruct_volumes_kspaces(data_loader, add_target=False, crop=crop))
+        # output = list(self.reconstruct_volumes(data_loader, add_target=False, crop=crop))
 
         return output
 
@@ -311,11 +312,11 @@ class Engine(ABC, DataDimensionality):
             except RuntimeError as e:
                 # Maybe string can change
                 if "out of memory" in str(e):
-                    if fail_counter == 3:
+                    if fail_counter == 5:
                         self.checkpoint_and_write_to_logs(iter_idx)
                         raise TrainingException(f"OOM, had three exceptions in a row tries: {e}.")
                     fail_counter += 1
-                    self.logger.info(f"OOM Error: {e}. Skipping batch. Retry {fail_counter}/3.")
+                    self.logger.info(f"OOM Error: {e}. Skipping batch. Retry {fail_counter}/5.")
                     self.__optimizer.zero_grad()  # type: ignore
                     gc.collect()
                     torch.cuda.empty_cache()
@@ -336,6 +337,11 @@ class Engine(ABC, DataDimensionality):
                             # In-place division
                             parameter.grad.div_(self.cfg.training.gradient_steps)  # type: ignore
                 if self.cfg.training.gradient_clipping > 0.0:  # type: ignore
+                    # Adding epsilon to gradients
+                    epsilon = 1e-8
+                    for param in self.model.parameters():
+                        if param.grad is not None:
+                            param.grad += epsilon
                     self._scaler.unscale_(self.__optimizer)
                     torch.nn.utils.clip_grad_norm_(
                         self.model.parameters(), self.cfg.training.gradient_clipping  # type: ignore
@@ -348,7 +354,7 @@ class Engine(ABC, DataDimensionality):
                         "This message will only be displayed once."
                     )
                     parameters = list(filter(lambda p: p.grad is not None, self.model.parameters()))
-                    gradient_norm = sum([parameter.grad.data**2 for parameter in parameters]).sqrt()  # type: ignore
+                    gradient_norm = sum([(parameter.grad.data**2).sum() for parameter in parameters]).sqrt()  # type: ignore
                     storage.add_scalar("train/gradient_norm", gradient_norm)
 
                 # Same as self.__optimizer.step() for mixed precision.

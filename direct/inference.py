@@ -15,7 +15,7 @@ from direct.environment import setup_inference_environment
 from direct.types import FileOrUrl, PathOrString
 from direct.utils import chunks, dict_flatten, remove_keys
 from direct.utils.io import read_list
-from direct.utils.writers import write_output_to_h5
+from direct.utils.writers import write_output_to_mat
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ def setup_inference_save_to_h5(
     mixed_precision: bool = False,
     debug: bool = False,
     is_validation: bool = False,
+    task_name: str = "Task1",
 ) -> None:
     """This function contains most of the logic in DIRECT required to launch a multi-gpu / multi-node inference process.
 
@@ -120,10 +121,11 @@ def setup_inference_save_to_h5(
 
         # Perhaps aggregation to the main process would be most optimal here before writing.
         # The current way this write the volumes for each process.
-        write_output_to_h5(
+        write_output_to_mat(
             output,
             output_directory,
-            output_key="reconstruction",
+            task_name,
+            output_key="img4ranking",
         )
 
 

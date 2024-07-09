@@ -130,6 +130,7 @@ class VSharpNet3DEngine(MRIModelEngine):
         output_image = output_images[-1]
         return DoIterationOutput(
             output_image=output_image,
+            output_kspace=output_kspace if self.model.training else None,
             sensitivity_map=data["sensitivity_map"],
             data_dict={**loss_dict},
         )

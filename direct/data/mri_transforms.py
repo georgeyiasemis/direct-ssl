@@ -592,16 +592,13 @@ class CropKspace(DirectTransform):
 
         if isinstance(self.crop, IntegerListOrTupleString):
             crop_shape = IntegerListOrTupleString(self.crop)
-            if kspace.ndim == 5 and len(crop_shape) == 2:
-                crop_shape = (kspace.shape[1],) + crop_shape
         elif isinstance(self.crop, str):
             assert self.crop in sample, f"Not found {self.crop} key in sample."
             crop_shape = sample[self.crop][:-1]
         else:
-            if kspace.ndim == 5 and len(self.crop) == 2:
-                crop_shape = (kspace.shape[1],) + tuple(self.crop)
-            else:
-                crop_shape = tuple(self.crop)
+            crop_shape = tuple(self.crop)
+        if kspace.ndim == 5 and len(self.crop) == 2:
+            crop_shape = (kspace.shape[1],) + tuple(self.crop)
 
         cropper_args = {
             "data_list": [backprojected_kspace],
@@ -1967,7 +1964,7 @@ def build_pre_mri_transforms(
         mri_transforms += [
             CreateSamplingMask(
                 mask_func,
-                shape=(None if (isinstance(crop, str)) else crop),
+                shape=None,
                 use_seed=use_seed,
                 return_acs=True,
             ),
@@ -2319,7 +2316,7 @@ def build_supervised_mri_transforms(
         mri_transforms += [
             CreateSamplingMask(
                 mask_func,
-                shape=(None if (isinstance(crop, str)) else crop),
+                shape=None,
                 use_seed=use_seed,
                 return_acs=estimate_sensitivity_maps,
             ),

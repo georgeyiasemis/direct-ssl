@@ -734,6 +734,128 @@ class MRIModelEngine(Engine):
         return T.safe_divide(sensitivity_map, sensitivity_map_norm)
 
     @torch.no_grad()
+    def reconstruct_volumes_kspaces(  # type: ignore
+        self,
+        data_loader: DataLoader,
+        loss_fns: Optional[Dict[str, Callable]] = None,
+        regularizer_fns: Optional[Dict[str, Callable]] = None,
+        add_target: bool = True,
+        crop: Optional[str] = None,
+    ):
+        """Validation process. Assumes that each batch only contains slices of the same volume *AND* that these are
+        sequentially ordered.
+
+        Parameters
+        ----------
+        data_loader: DataLoader
+        loss_fns: Dict[str, Callable], optional
+        regularizer_fns: Dict[str, Callable], optional
+        add_target: bool
+            If true, will add the target to the output
+        crop: str, optional
+            Crop type.
+
+        Yields
+        ------
+        (curr_volume, [curr_target,] loss_dict_list, filename): torch.Tensor, [torch.Tensor,], dict, pathlib.Path
+        """
+        # pylint: disable=too-many-locals, arguments-differ
+        self.models_to_device()
+        self.models_validation_mode()
+        torch.cuda.empty_cache()
+
+        # Let us inspect this data
+        all_filenames = list(data_loader.dataset.volume_indices.keys())  # type: ignore
+        num_for_this_process = len(list(data_loader.batch_sampler.sampler.volume_indices.keys()))  # type: ignore
+        self.logger.info(
+            "Reconstructing a total of %s volumes. This process has %s volumes (world size: %s).",
+            len(all_filenames),
+            num_for_this_process,
+            communication.get_world_size(),
+        )
+
+        last_filename = None  # At the start of evaluation, there are no filenames.
+        curr_volume = None
+        curr_target = None
+        slice_counter = 0
+        filenames_seen = 0
+
+        # Loop over dataset. This requires the use of direct.data.sampler.DistributedSequentialSampler as this sampler
+        # splits the data over the different processes, and outputs the slices linearly. The implicit assumption here is
+        # that the slices are outputted from the Dataset *sequentially* for each volume one by one, and each batch only
+        # contains data from one volume.
+        time_start = time.time()
+        loss_dict_list = []
+        # TODO: Use iter_idx to keep track of volume
+        for _, data in enumerate(data_loader):
+            torch.cuda.empty_cache()
+            gc.collect()
+            filename = _get_filename_from_batch(data)
+            if last_filename is None:
+                last_filename = filename  # First iteration last_filename is not set.
+            if last_filename != filename:
+                curr_volume = None
+                curr_target = None
+                slice_counter = 0
+                last_filename = filename
+
+            scaling_factors = data["scaling_factor"].clone()
+
+            # Compute output
+            iteration_output = self._do_iteration(data, loss_fns=loss_fns, regularizer_fns=regularizer_fns)
+            output = iteration_output.output_image
+            loss_dict = iteration_output.data_dict
+
+            # Output can be complex-valued, and has to be cropped. This holds for both output and target.
+            output_abs = _process_output_kspace(
+                output,
+                scaling_factors,
+            )
+
+            if add_target:
+                target_abs = _process_output_kspace(
+                    data["kspace"],
+                    scaling_factors,
+                )
+
+            if curr_volume is None:
+                volume_size = len(data_loader.batch_sampler.sampler.volume_indices[filename])  # type: ignore
+                curr_volume = torch.zeros(*(volume_size, *output_abs.shape[1:]), dtype=output_abs.dtype)
+                loss_dict_list.append(loss_dict)
+                if add_target:
+                    curr_target = curr_volume.clone()
+
+            curr_volume[slice_counter : slice_counter + output_abs.shape[0], ...] = output_abs.cpu()
+            if add_target:
+                curr_target[slice_counter : slice_counter + output_abs.shape[0], ...] = target_abs.cpu()  # type: ignore
+
+            slice_counter += output_abs.shape[0]
+
+            # Check if we had the last batch
+            if slice_counter == volume_size:
+                filenames_seen += 1
+
+                self.logger.info(
+                    "%i of %i volumes reconstructed: %s (shape = %s) in %.3fs.",
+                    filenames_seen,
+                    num_for_this_process,
+                    last_filename,
+                    list(curr_volume.shape),
+                    time.time() - time_start,
+                )
+                # Maybe not needed.
+                del data
+                yield (
+                    (curr_volume, curr_target, reduce_list_of_dicts(loss_dict_list), filename)
+                    if add_target
+                    else (
+                        curr_volume,
+                        reduce_list_of_dicts(loss_dict_list),
+                        filename,
+                    )
+                )
+
+    @torch.no_grad()
     def reconstruct_volumes(  # type: ignore
         self,
         data_loader: DataLoader,
@@ -1143,3 +1265,26 @@ def _get_filename_from_batch(data: dict) -> pathlib.Path:
         )
     # This can be fixed when there is a custom collate_fn
     return pathlib.Path(filenames[0])
+
+
+def _process_output_kspace(
+    data: torch.Tensor,
+    scaling_factors: Optional[torch.Tensor] = None,
+) -> torch.Tensor:
+    """Crops and scales input tensor.
+
+    Parameters
+    ----------
+    data: torch.Tensor
+    scaling_factors: Optional[torch.Tensor]
+        Scaling factor. Default: None.
+
+    Returns
+    -------
+    torch.Tensor
+    """
+    # data is of shape (batch, complex=2, height, width)
+    if scaling_factors is not None:
+        data = data * scaling_factors.view(-1, *((1,) * (len(data.shape) - 1))).to(data.device)
+
+    return data

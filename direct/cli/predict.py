@@ -80,5 +80,13 @@ def register_parser(parser: argparse._SubParsersAction):
         type=str,
         default="",
     )
+    predict_parser.add_argument(
+        "--task",
+        dest="task",
+        help="Task name. Can be Task1 or Task2.",
+        required=False,
+        type=str,
+        default="Task1",
+    )
 
     predict_parser.set_defaults(subcommand=predict_from_argparse)
