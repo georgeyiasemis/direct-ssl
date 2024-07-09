@@ -188,7 +188,6 @@ class CMRxRecon2023Config(DatasetConfig):
 
 @dataclass
 class CMRxRecon2024Config(DatasetConfig):
-    regex_filter: Optional[str] = None
     data_root: Optional[str] = None
     filenames_filter: Optional[list[str]] = None
     filenames_lists: Optional[list[str]] = None
