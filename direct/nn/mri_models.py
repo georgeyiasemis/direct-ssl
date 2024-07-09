@@ -803,7 +803,7 @@ class MRIModelEngine(Engine):
 
             # Compute output
             iteration_output = self._do_iteration(data, loss_fns=loss_fns, regularizer_fns=regularizer_fns)
-            output = iteration_output.output_image
+            output = iteration_output.output_kspace
             loss_dict = iteration_output.data_dict
 
             # Output can be complex-valued, and has to be cropped. This holds for both output and target.
