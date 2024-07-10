@@ -108,17 +108,33 @@ class VSharpNet3DEngine(MRIModelEngine):
         output_kspace: TensorOrNone
 
         with autocast(enabled=self.mixed_precision):
-            output_images, output_kspace = self.forward_function(data)
-            output_images = [T.modulus_if_complex(_, complex_axis=self._complex_dim) for _ in output_images]
+            output_images, _, auxiliary_kspace = self.forward_function(data)
+            # output_images = [T.modulus_if_complex(_, complex_axis=self._complex_dim) for _ in output_images]
             loss_dict = {k: torch.tensor([0.0], dtype=data["target"].dtype).to(self.device) for k in loss_fns.keys()}
 
             auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
+
+            loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, auxiliary_kspace)
             for i, output_image in enumerate(output_images):
+                output_image = T.modulus_if_complex(output_image)
                 loss_dict = self.compute_loss_on_data(
                     loss_dict, loss_fns, data, output_image, None, auxiliary_loss_weights[i]
                 )
-            # Compute loss on k-space
-            loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, output_kspace)
+                output_kspace = data["masked_kspace"] + T.apply_mask(
+                    T.apply_padding(
+                        self.forward_operator(
+                            T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim),
+                            dim=self._spatial_dims,
+                        ),
+                        padding=data.get("padding", None),
+                    ),
+                    ~data["sampling_mask"],
+                    return_mask=False,
+                )
+                # Compute loss on k-space
+                loss_dict = self.compute_loss_on_data(
+                    loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
+                )
 
             loss = sum(loss_dict.values())  # type: ignore
 
@@ -138,26 +154,22 @@ class VSharpNet3DEngine(MRIModelEngine):
     def forward_function(self, data: dict[str, Any]) -> tuple[torch.Tensor, None]:
         data["sensitivity_map"] = self.compute_sensitivity_map(data["sensitivity_map"])
 
+        if "auxiliary_kspace_model" in self.models:
+            auxiliary_kspace = self.models["auxiliary_kspace_model"](
+                masked_kspace=data["masked_kspace"],
+                sampling_mask=data["sampling_mask"],
+                sensitivity_map=data["sensitivity_map"],
+            )
+        else:
+            auxiliary_kspace = None
+
         output_images = self.model(
-            masked_kspace=data["masked_kspace"],
+            masked_kspace=auxiliary_kspace,
             sampling_mask=data["sampling_mask"],
             sensitivity_map=data["sensitivity_map"],
         )  # shape (batch, height,  width, complex[=2])
 
-        output_image = output_images[-1]
-        output_kspace = data["masked_kspace"] + T.apply_mask(
-            T.apply_padding(
-                self.forward_operator(
-                    T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim),
-                    dim=self._spatial_dims,
-                ),
-                padding=data.get("padding", None),
-            ),
-            ~data["sampling_mask"],
-            return_mask=False,
-        )
-
-        return output_images, output_kspace
+        return output_images, None, auxiliary_kspace
 
 
 class VSharpNetEngine(MRIModelEngine):
