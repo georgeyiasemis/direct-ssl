@@ -117,9 +117,8 @@ class VSharpNet3DEngine(MRIModelEngine):
             if auxiliary_kspace is not None:
                 loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, auxiliary_kspace)
             for i, output_image in enumerate(output_images):
-                output_image = T.modulus_if_complex(output_image)
                 loss_dict = self.compute_loss_on_data(
-                    loss_dict, loss_fns, data, output_image, None, auxiliary_loss_weights[i]
+                    loss_dict, loss_fns, data, T.modulus_if_complex(output_image), None, auxiliary_loss_weights[i]
                 )
                 output_kspace = data["masked_kspace"] + T.apply_mask(
                     T.apply_padding(
