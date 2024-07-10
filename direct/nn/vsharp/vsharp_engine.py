@@ -114,7 +114,8 @@ class VSharpNet3DEngine(MRIModelEngine):
 
             auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
 
-            loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, auxiliary_kspace)
+            if auxiliary_kspace is not None:
+                loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, auxiliary_kspace)
             for i, output_image in enumerate(output_images):
                 output_image = T.modulus_if_complex(output_image)
                 loss_dict = self.compute_loss_on_data(
