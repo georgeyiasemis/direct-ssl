@@ -160,6 +160,15 @@ class VSharpNet3DEngine(MRIModelEngine):
                 sampling_mask=data["sampling_mask"],
                 sensitivity_map=data["sensitivity_map"],
             )
+
+            auxiliary_kspace = data["masked_kspace"] + T.apply_mask(
+                T.apply_padding(
+                    auxiliary_kspace,
+                    padding=data.get("padding", None),
+                ),
+                ~data["sampling_mask"],
+                return_mask=False,
+            )
         else:
             auxiliary_kspace = None
 
