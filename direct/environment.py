@@ -218,11 +218,13 @@ def initialize_models_from_config(
     for k, v in cfg.additional_models.items():
         # Remove model_name key
         curr_model = models[k]
-        curr_model_cfg = {kk: vv for kk, vv in v.items() if kk != "model_name"}
+        curr_model_cfg = {kk: vv for kk, vv in v.items() if kk not in ["engine_name", "model_name"]}
         curr_model_cfg.update(filter_arguments_by_signature(curr_model, operator_kwargs))
         additional_models[k] = curr_model(**curr_model_cfg)
 
-    model = models["model"](**operator_kwargs, **{k: v for (k, v) in cfg.model.items()}).to(device)
+    model = models["model"](**operator_kwargs, **{k: v for (k, v) in cfg.model.items() if k != "engine_name"}).to(
+        device
+    )
 
     # Log total number of parameters
     count_parameters({"model": model, **additional_models})
