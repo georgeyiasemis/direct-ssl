@@ -137,7 +137,6 @@ class TransformsConfig(BaseConfig):
     padding_eps: float = 0.001
     estimate_body_coil_image: bool = False
     sensitivity_map_estimation: SensitivityMapEstimationTransformConfig = SensitivityMapEstimationTransformConfig()
-    create_calibration: bool = False
     normalization: NormalizationTransformConfig = NormalizationTransformConfig()
     delete_acs_mask: bool = True
     delete_kspace: bool = True
