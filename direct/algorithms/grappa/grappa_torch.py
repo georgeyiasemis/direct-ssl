@@ -342,4 +342,4 @@ def grappa_reconstruction_torch_batch(
         kspace_grappa[batch_idx] = grappa_reconstruction_torch(
             kspace_data[batch_idx], calib_data[batch_idx], kernel_geometry_slice[batch_idx]
         )
-    return torch.view_as_real(kspace_grappa)
+    return torch.view_as_real(kspace_grappa).to(kspace_data.device)
