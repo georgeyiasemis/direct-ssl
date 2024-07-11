@@ -337,6 +337,7 @@ def grappa_reconstruction_torch_batch(
         kernel_geometry_slice = [kspace_data[_].shape[0] // 2 for _ in range(batch_size)]
     kspace_data = torch.view_as_complex(kspace_data)
     kspace_grappa = torch.zeros(kspace_data.shape, dtype=kspace_data.dtype)
+    calib_data = torch.view_as_complex(calib_data)
     for batch_idx in range(batch_size):
         kspace_grappa[batch_idx] = grappa_reconstruction_torch(
             kspace_data[batch_idx], calib_data[batch_idx], kernel_geometry_slice[batch_idx]
