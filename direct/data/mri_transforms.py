@@ -2354,7 +2354,7 @@ def build_supervised_mri_transforms(
             ApplyMask(
                 sampling_mask_key=TransformKey.ACS_MASK,
                 input_kspace_key=KspaceKey.KSPACE,
-                target_kspace_key=KspaceKey.ACS_KPACE,
+                target_kspace_key=KspaceKey.ACS_KSPACE,
             )
         ]
     if delete_acs_mask:
