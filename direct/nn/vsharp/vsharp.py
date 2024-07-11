@@ -557,7 +557,7 @@ class VSharpNet3D(nn.Module):
         masked_kspace: torch.Tensor,
         sensitivity_map: torch.Tensor,
         sampling_mask: torch.Tensor,
-        calib_kspace: Optional[torch.Tensor],
+        calib_kspace: Optional[torch.Tensor] = None,
     ) -> list[torch.Tensor]:
         """Computes forward pass of :class:`VSharpNet3D`.
 
