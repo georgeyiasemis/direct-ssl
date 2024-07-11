@@ -846,26 +846,39 @@ def complex_random_crop(
 
 
 def crop_to_acs(acs_mask: torch.Tensor, kspace: torch.Tensor) -> torch.Tensor:
-    """Crops k-space to autocalibration region given the acs_mask.
+    """Crop the k-sapce to the ACS region from the given boolean mask.
+
+    This assumes that the ACS is a centered rectangle.
 
     Parameters
     ----------
     acs_mask : torch.Tensor
-        Autocalibration mask of shape (height, width).
+        Mask of the ACS region.
     kspace : torch.Tensor
-        K-space of shape (coil, height, width, \*).
+        The k-space data.
 
     Returns
     -------
     torch.Tensor
-        Cropped k-space of shape (coil, height', width', \*), where height' and width' are the new dimensions derived
-        from the acs_mask.
+        Cropped k-space data to the ACS region.
     """
-    nonzero_idxs = torch.nonzero(acs_mask)
-    x, y = nonzero_idxs[..., 0], nonzero_idxs[..., 1]
-    xl, xr = x.min(), x.max()
-    yl, yr = y.min(), y.max()
-    return kspace[:, xl : xr + 1, yl : yr + 1]
+    if kspace.ndim != acs_mask.ndim:
+        raise ValueError(
+            f"Mask and kspace should have the same number of dimensions. Got {kspace.ndim} and {acs_mask.ndim}."
+        )
+
+    # Find the smallest enclosing rectangle for the ACS region
+    acs_coords = torch.nonzero(acs_mask, as_tuple=True)
+
+    x_min = acs_coords[-3].min().item()
+    x_max = acs_coords[-3].max().item()
+    y_min = acs_coords[-2].min().item()
+    y_max = acs_coords[-2].max().item()
+
+    # Crop k-space to the ACS region
+    cropped_acs_kspace = kspace[..., x_min : x_max + 1, y_min : y_max + 1, :]
+
+    return cropped_acs_kspace
 
 
 def reduce_operator(

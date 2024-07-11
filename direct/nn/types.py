@@ -21,6 +21,7 @@ class ModelName(DirectEnum):
 
 class InitType(DirectEnum):
     INPUT_IMAGE = "input_image"
+    GRAPPA = "grappa"
     SENSE = "sense"
     ZERO_FILLED = "zero_filled"
     ZEROS = "zeros"

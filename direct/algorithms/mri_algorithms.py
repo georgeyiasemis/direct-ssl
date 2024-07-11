@@ -86,7 +86,7 @@ class EspiritCalibration(DirectModule):
         non_padded_dim = kspace.clone().sum(dim=tuple(range(1, kspace.ndim))).bool()
 
         num_coils = non_padded_dim.sum()
-        acs_kspace_cropped = view_as_complex(crop_to_acs(acs_mask.squeeze(), kspace[non_padded_dim]))
+        acs_kspace_cropped = view_as_complex(crop_to_acs(acs_mask, kspace[non_padded_dim]))
 
         # Get calibration matrix.
         calibration_matrix = (

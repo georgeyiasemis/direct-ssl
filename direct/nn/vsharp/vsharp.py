@@ -17,13 +17,14 @@ References
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+from direct.algorithms.grappa.grappa_torch import grappa_reconstruction_torch_batch
 from direct.constants import COMPLEX_SIZE
 from direct.data.transforms import apply_mask, expand_operator, reduce_operator
 from direct.nn.get_nn_model_config import ModelName, _get_model_config, _get_relu_activation
@@ -529,8 +530,11 @@ class VSharpNet3D(nn.Module):
         self.forward_operator = forward_operator
         self.backward_operator = backward_operator
 
-        if image_init not in ["sense", "zero_filled"]:
-            raise ValueError(f"Unknown image_initialization. Expected 'sense' or 'zero_filled'. " f"Got {image_init}.")
+        if image_init not in [InitType.SENSE, InitType.ZERO_FILLED, InitType.GRAPPA]:
+            raise ValueError(
+                f"Unknown image_initialization. Expected `InitType.SENSE`, `InitType.ZERO_FILLED` or `InitType.GRAPPA`."
+                f"Got {image_init}."
+            )
 
         self.image_init = image_init
 
@@ -553,6 +557,7 @@ class VSharpNet3D(nn.Module):
         masked_kspace: torch.Tensor,
         sensitivity_map: torch.Tensor,
         sampling_mask: torch.Tensor,
+        calib_kspace: Optional[torch.Tensor],
     ) -> list[torch.Tensor]:
         """Computes forward pass of :class:`VSharpNet3D`.
 
@@ -564,6 +569,10 @@ class VSharpNet3D(nn.Module):
             Sensitivity map of shape (N, coil, slice, height, width, complex=2).
         sampling_mask : torch.Tensor
             Sampling mask of shape (N, 1, 1 or slice, height, width, 1).
+        calib_kspace : torch.Tensor, optional
+            Calibration k-space of shape (N, coil, slice, height, width, complex=2).
+            Will be used for GRAPPA initialization if `image_init` is `InitType.GRAPPA`.
+            Default: None.
 
         Returns
         -------
@@ -571,16 +580,22 @@ class VSharpNet3D(nn.Module):
             List of output images each of shape (N, slice, height, width, complex=2).
         """
         out = []
+        x = reduce_operator(
+            coil_data=self.backward_operator(masked_kspace, dim=self._spatial_dims),
+            sensitivity_map=sensitivity_map,
+            dim=self._coil_dim,
+        )
         if self.image_init == InitType.SENSE:
-            x = reduce_operator(
-                coil_data=self.backward_operator(masked_kspace, dim=self._spatial_dims),
-                sensitivity_map=sensitivity_map,
-                dim=self._coil_dim,
-            )
+            z = x.clone()
+        elif self.image_init == InitType.GRAPPA and calib_kspace is not None:
+            with torch.no_grad():
+                z = grappa_reconstruction_torch_batch(
+                    kspace_data=masked_kspace,
+                    calib_data=calib_kspace,
+                    kernel_geometry_slice=[masked_kspace[_].shape[0] // 2 for _ in range(masked_kspace.shape[0])],
+                )
         else:
-            x = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
-
-        z = x.clone()
+            z = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
 
         u = self.initializer(x.permute(0, 4, 1, 2, 3)).permute(0, 2, 3, 4, 1)
 

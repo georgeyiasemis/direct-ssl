@@ -49,6 +49,7 @@ class DirectEnum(str, Enum):
 class KspaceKey(DirectEnum):
     KSPACE = "kspace"
     MASKED_KSPACE = "masked_kspace"
+    ACS_KSPACE = "acs_kspace"
 
 
 class TransformKey(DirectEnum):
