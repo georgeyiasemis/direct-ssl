@@ -1161,8 +1161,8 @@ class CMRxRecon2024Dataset(Dataset):
 
         sample = {"kspace": kspace, "filename": str(filename), "slice_no": slice_no}
 
+        nx, ny = shape[-2:]
         if self.compute_mask or (any("mask" in key for key in extra_data)):
-            nx, ny = shape[-2:]
 
             if self.kspace_context:  # slice or time dim
                 n = shape[-3]
