@@ -174,73 +174,53 @@ class GrappaTorch(object):
         calib = torch.moveaxis(calib, self.coil_axis, -1)
         kx, ky = self.kernel_size[:]
         kx2, ky2 = int(kx / 2), int(ky / 2)
-        num_coils = calib.shape[-1]
+        ny, nx, num_coils = calib.shape
 
         calib = torch.nn.functional.pad(calib, (0, 0, ky2, ky2, kx2, kx2), mode="constant")
 
-        # Store windows in temporary files so we don't overwhelm memory
-        with NTF() as fA:
-            # Get all overlapping patches of ACS
-            try:
-                patches = np.memmap(
-                    fA,
-                    dtype=np.complex64,
-                    mode="w+",
-                    shape=(calib.shape[0] - 2 * kx, calib.shape[1] - 2 * ky, 1, kx, ky, num_coils),
-                )
-                patches[:] = (
-                    view_as_windows_torch(calib[None, None], (kx, ky, num_coils))[0, 0]
-                    .reshape((-1, kx, ky, num_coils))
-                    .cpu()
-                    .numpy()
-                )
-            except ValueError:
-                patches = (
-                    view_as_windows_torch(calib[None, None], (kx, ky, num_coils))[0, 0]
-                    .reshape((-1, kx, ky, num_coils))
-                    .cpu()
-                    .numpy()
-                )
+        shape = (ny * nx, kx, ky, num_coils)
 
-            weights = {}
-            for ii in self.kernel_var_dict["patch_indices"]:
-                # Get the sources by masking all patches of the ACS and
-                # get targets by taking the center of each patch. Source
-                # and targets will have the following sizes:
-                #     S : (# samples, N possible patches in ACS)
-                #     T : (# coils, N possible patches in ACS)
-                # Solve the equation for the weights: using numpy.linalg.solve,
-                # and Tikhonov regularization for better conditioning:
-                #     SW = T
-                #     S^HSW = S^HT
-                #     W = (S^HS)^-1 S^HT
-                #  -> W = (S^HS + lamda I)^-1 S^HT
-                S = torch.from_numpy(patches[:, self.kernel_var_dict["patches"][ii, ...]]).to(calib.device)
-                T = torch.from_numpy(patches[:, kx2, ky2, :]).to(calib.device)
+        patches = torch.empty(shape, dtype=calib.dtype, device=self.device)
+        patches[:] = view_as_windows_torch(calib[None, None], (kx, ky, num_coils))[0, 0].reshape(
+            (-1, kx, ky, num_coils)
+        )
 
-                ShS = torch.conj(S).permute(1, 0) @ S
-                ShT = torch.conj(S).permute(1, 0) @ T
-                lamda0 = self.lamda * torch.norm(ShS) / ShS.shape[0]
+        #
+        T = patches[:, kx2, ky2, :]
 
-                weights[ii] = (
-                    torch.linalg.solve(ShS + lamda0 * torch.eye(ShS.shape[0], device=self.device), ShT)
-                    .permute(1, 0)
-                    .cpu()
-                    .numpy()
-                )
+        weights_len = torch.from_numpy(
+            self.kernel_var_dict["patches"][self.kernel_var_dict["patch_indices"]].sum((1, 2, 3))
+        ).to(calib.device)
 
-        return weights
+        weights = torch.empty(
+            (len(self.kernel_var_dict["patch_indices"]), num_coils, weights_len.max()),
+            device=self.device,
+            dtype=calib.dtype,
+        )
 
-    def apply_weights(self, kspace: np.ndarray, weights: dict[int, np.ndarray]) -> np.ndarray:
+        weights = compute_weights_loop(
+            patches,
+            T,
+            weights,
+            weights_len,
+            self.lamda,
+            torch.from_numpy(self.kernel_var_dict["patch_indices"]).to(self.device),
+            torch.from_numpy(self.kernel_var_dict["patches"]).to(self.device),
+        )
+
+        return weights, weights_len
+
+    def apply_weights(self, kspace: np.ndarray, weights: np.ndarray, weights_len: np.ndarray) -> np.ndarray:
         """Applies the computed GRAPPA weights to the k-space data.
 
         Parameters
         ----------
         kspace : numpy.ndarray
             The k-space data to apply the weights to.
-
-        weights : dict
-            A dictionary containing the GRAPPA weights to apply.
+        weights : numpy.ndarray
+            The GRAPPA weights to apply.
+        weights_len : numpy.ndarray
+            The length of the weights for each patch index.
 
         Returns
         -------
@@ -265,14 +245,112 @@ class GrappaTorch(object):
             # Initialize recon array
             recon = np.memmap(frecon, dtype=kspace.dtype, mode="w+", shape=kspace.shape)
 
-            for ii in self.kernel_var_dict["patch_indices"]:
+            for i, ii in enumerate(self.kernel_var_dict["patch_indices"]):
                 for xx, yy in zip(self.kernel_var_dict["holes_x"][ii], self.kernel_var_dict["holes_y"][ii]):
                     # Collect sources for this hole and apply weights
                     S = kspace[xx - kx2 : xx + kx2 + adjx, yy - ky2 : yy + ky2 + adjy, :]
 
                     S = S[self.kernel_var_dict["patches"][ii, ...]]
-                    recon[xx, yy, :] = (weights[ii] @ S[:, None]).squeeze()
+                    recon[xx, yy, :] = (weights[i, :, : weights_len[i]] @ S[:, None]).squeeze()
             return np.moveaxis((recon[:] + kspace)[kx2:-kx2, ky2:-ky2, :], -1, self.coil_axis)
+
+
+@torch.jit.script
+def cholesky_ex(A: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+    """Solve the linear system Ax = b using Cholesky decomposition (experimental).
+
+    Parameters
+    ----------
+    A : torch.Tensor
+        The matrix A of the linear system.
+    b : torch.Tensor
+        The matrix/vector b of the linear system.
+
+    Returns
+    -------
+    x : torch.Tensor
+        The solution to the linear system.
+    """
+    L = torch.linalg.cholesky_ex(A)[0]
+    y = torch.linalg.solve_triangular(L, b, upper=False)
+    x = torch.linalg.solve_triangular(L.mH, y, upper=True)
+
+    return x
+
+
+@torch.jit.script
+def eye_mat(n: int, device: torch.device) -> torch.Tensor:
+    """Create an identity matrix of size n x n.
+
+    Parameters
+    ----------
+    n : int
+        The size of the identity matrix.
+    device : torch.device
+        The device to store the matrix on.
+
+    Returns
+    -------
+    torch.Tensor
+        The identity matrix.
+    """
+    return torch.eye(n, device=device)
+
+
+@torch.jit.script
+def compute_weights_loop(
+    patches: torch.Tensor,
+    T: torch.Tensor,
+    weights: torch.Tensor,
+    weights_len: torch.Tensor,
+    lamda: float,
+    patch_indices: torch.Tensor,
+    kernel_patches: torch.Tensor,
+) -> torch.Tensor:
+    """Compute GRAPPA weights for each patch index.
+
+    Get the sources by masking all patches of the ACS and
+    get targets by taking the center of each patch. Source
+    and targets will have the following sizes:
+        S : (# samples, N possible patches in ACS)
+        T : (# coils, N possible patches in ACS)
+    Solve the equation for the weights: using numpy.linalg.solve,
+    and Tikhonov regularization for better conditioning:
+        SW = T
+        S^HSW = S^HT
+        W = (S^HS)^-1 S^HT
+     -> W = (S^HS + lamda I)^-1 S^HT
+
+    Parameters
+    ----------
+    patches : torch.Tensor
+        The patches extracted from the calibration data.
+    T : torch.Tensor
+        The target patches.
+    weights : torch.Tensor
+        The GRAPPA weights to compute.
+    weights_len : torch.Tensor
+        The length of the weights for each patch index.
+    lamda : float
+        The regularization parameter.
+    patch_indices : torch.Tensor
+        The indices of the patches to compute weights for.
+    kernel_patches : torch.Tensor
+        The kernel patches.
+
+    Returns
+    -------
+    torch.Tensor
+    """
+    for i in range(weights.shape[0]):
+        S = patches[:, kernel_patches[patch_indices[i], ...]]
+        ShS = S.mH @ S
+        ShT = S.mH @ T
+        ShS_0 = ShS.shape[0]
+        lamda0 = lamda * torch.norm(ShS) / ShS_0
+        eye = eye_mat(ShS_0, patches.device)
+        weights[i, :, : weights_len[i]] = cholesky_ex(ShS + lamda0 * eye, ShT).mT
+    return weights
 
 
 def grappa_reconstruction_torch(
@@ -301,10 +379,12 @@ def grappa_reconstruction_torch(
     kspace_post_grappa = torch.zeros(kspace_data.shape, dtype=kspace_data.dtype)
     for slice_num in range(kspace_data.shape[0]):
         # calculate GRAPPA weights for each slice
-        grappa_weight_dict = grappa_obj.compute_weights(calib_data[slice_num])
+        grappa_weights, grappa_weights_len = grappa_obj.compute_weights(calib_data[slice_num])
         # apply GRAPPA weights to each slice
         kspace_post_grappa[slice_num] = torch.from_numpy(
-            grappa_obj.apply_weights(kspace_data[slice_num].cpu().numpy(), grappa_weight_dict)
+            grappa_obj.apply_weights(
+                kspace_data[slice_num].cpu().numpy(), grappa_weights.cpu().numpy(), grappa_weights_len.cpu().numpy()
+            )
         ).to(kspace_data.device)
 
     return kspace_post_grappa.permute(2, 0, 3, 1)  # (num_coils, num_slices, num_rows, num_cols)
@@ -331,13 +411,17 @@ def grappa_reconstruction_torch_batch(
         k-space with shape (batch_size, num_coils, num_slices, num_rows, num_cols).
     """
     batch_size = kspace_data.shape[0]
+
     if isinstance(kernel_geometry_slice, int):
         kernel_geometry_slice = (kernel_geometry_slice,) * batch_size
+
     if kernel_geometry_slice is None:
         kernel_geometry_slice = [kspace_data[_].shape[0] // 2 for _ in range(batch_size)]
+
     kspace_data = torch.view_as_complex(kspace_data)
     kspace_grappa = torch.zeros(kspace_data.shape, dtype=kspace_data.dtype)
     calib_data = torch.view_as_complex(calib_data)
+
     for batch_idx in range(batch_size):
         kspace_grappa[batch_idx] = grappa_reconstruction_torch(
             kspace_data[batch_idx], calib_data[batch_idx], kernel_geometry_slice[batch_idx]
