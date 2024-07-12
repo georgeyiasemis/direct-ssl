@@ -593,6 +593,7 @@ class VSharpNet3D(nn.Module):
                     kspace_data=masked_kspace,
                     calib_data=calib_kspace,
                 )
+                z = self.backward_operator(z, dim=self._spatial_dims).sum(self._coil_dim) 
         else:
             z = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
 
