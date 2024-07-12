@@ -592,7 +592,6 @@ class VSharpNet3D(nn.Module):
                 z = grappa_reconstruction_torch_batch(
                     kspace_data=masked_kspace,
                     calib_data=calib_kspace,
-                    kernel_geometry_slice=[masked_kspace[_].shape[0] // 2 for _ in range(masked_kspace.shape[0])],
                 )
         else:
             z = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
