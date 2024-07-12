@@ -1228,18 +1228,31 @@ class CMRxRecon2024Dataset(Dataset):
             # Add context dimension in reconstruction size without any crop
             sample["reconstruction_size"] = (shape[1],) + sample["reconstruction_size"]
 
-        if self.acs_type == "auto":
-            if "radial" in sample["filename"].lower():
+        if self.compute_mask:
+            if self.acs_type == "auto":
+                if not "radial" in sample["filename"].lower():
+                    sample["calibration_kspace"] = sample["kspace"][
+                        ...,
+                        ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
+                    ]
+                else:
+                    sample["calibration_kspace"] = sample["kspace"][
+                        ...,
+                        nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
+                        ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
+                    ]
+                
+            elif self.acs_type == "radial":
+                sample["calibration_kspace"] = sample["kspace"][
+                    ...,
+                    nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
+                    ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
+                ]
+            else:
                 sample["calibration_kspace"] = sample["kspace"][
                     ...,
                     ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
                 ]
-        else:
-            sample["calibration_kspace"] = sample["kspace"][
-                ...,
-                nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
-                ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
-            ]
 
         if self.transform:
             sample = self.transform(sample)

@@ -2120,6 +2120,7 @@ def build_supervised_mri_transforms(
     sensitivity_maps_espirit_kernel_size: Optional[int] = 6,
     sensitivity_maps_espirit_crop: Optional[float] = 0.95,
     sensitivity_maps_espirit_max_iters: Optional[int] = 30,
+    create_calibration: bool = False,
     delete_acs_mask: bool = True,
     delete_kspace: bool = True,
     image_recon_type: ReconstructionType = ReconstructionType.RSS,
@@ -2221,6 +2222,8 @@ def build_supervised_mri_transforms(
         Output eigenvalue cropping threshold when `type_of_map` is set to `SensitivityMapType.ESPIRIT`. Default: 0.95.
     sensitivity_maps_espirit_max_iters : int, optional
         Power method iterations when `type_of_map` is set to `SensitivityMapType.ESPIRIT`. Default: 30.
+    create_calibration : bool
+        If True, will create a calibration k-space from acs. Default: False.
     delete_acs_mask : bool
         If True will delete key `acs_mask`. Default: True.
     delete_kspace : bool
@@ -2349,7 +2352,14 @@ def build_supervised_mri_transforms(
                 espirit_max_iters=sensitivity_maps_espirit_max_iters,
             )
         ]
-
+    if create_calibration:
+        mri_transforms += [
+            ApplyMask(
+                sampling_mask_key=TransformKey.ACS_MASK,
+                input_kspace_key=KspaceKey.KSPACE,
+                target_kspace_key=KspaceKey.ACS_KSPACE,
+            )
+        ]
     if delete_acs_mask:
         mri_transforms += [DeleteKeys(keys=["acs_mask"])]
     mri_transforms += [
@@ -2419,6 +2429,7 @@ def build_mri_transforms(
     sensitivity_maps_espirit_kernel_size: Optional[int] = 6,
     sensitivity_maps_espirit_crop: Optional[float] = 0.95,
     sensitivity_maps_espirit_max_iters: Optional[int] = 30,
+    create_calibration: bool = False,
     delete_acs_mask: bool = True,
     delete_kspace: bool = True,
     image_recon_type: ReconstructionType = ReconstructionType.RSS,
@@ -2528,6 +2539,8 @@ def build_mri_transforms(
         Output eigenvalue cropping threshold when `type_of_map` is set to `SensitivityMapType.ESPIRIT`. Default: 0.95.
     sensitivity_maps_espirit_max_iters : int, optional
         Power method iterations when `type_of_map` is set to `SensitivityMapType.ESPIRIT`. Default: 30.
+    create_calibration : bool
+        If True, will create calibration k-space from ACS. Default: False.
     delete_acs_mask : bool
         If True will delete key `acs_mask`. Default: True.
     delete_kspace : bool
@@ -2618,6 +2631,7 @@ def build_mri_transforms(
         sensitivity_maps_espirit_kernel_size=sensitivity_maps_espirit_kernel_size,
         sensitivity_maps_espirit_crop=sensitivity_maps_espirit_crop,
         sensitivity_maps_espirit_max_iters=sensitivity_maps_espirit_max_iters,
+        create_calibration=create_calibration,
         delete_acs_mask=delete_acs_mask if transforms_type == TransformsType.SUPERVISED else False,
         delete_kspace=delete_kspace if transforms_type == TransformsType.SUPERVISED else False,
         image_recon_type=image_recon_type,
