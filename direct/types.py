@@ -23,6 +23,10 @@ TensorOrNone = Union[None, torch.Tensor]
 TensorOrNdarray = Union[torch.Tensor, np.ndarray]
 
 
+class NaNLossException(Exception):
+    pass
+
+
 class DirectEnum(str, Enum):
     """Type of any enumerator with allowed comparison to string invariant to cases."""
 
