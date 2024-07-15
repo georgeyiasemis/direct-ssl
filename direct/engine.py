@@ -33,7 +33,7 @@ from direct.data.bbox import crop_to_largest
 from direct.data.datasets import ConcatDataset
 from direct.data.samplers import ConcatDatasetBatchSampler
 from direct.exceptions import ProcessKilledException, TrainingException
-from direct.types import PathOrString
+from direct.types import NaNLossException, PathOrString
 from direct.utils import communication, normalize_image, prefix_dict_keys, reduce_list_of_dicts, str_to_class
 from direct.utils.events import CommonMetricPrinter, EventStorage, JSONWriter, TensorboardWriter, get_event_storage
 from direct.utils.io import write_json
@@ -292,6 +292,7 @@ class Engine(ABC, DataDimensionality):
 
         total_iter = self.cfg.training.num_iterations  # type: ignore
         fail_counter = 0
+        fail_counter_nan = 0
         for data, iter_idx in zip(data_loader, range(start_iter, total_iter)):
             if iter_idx == 0:
                 self.log_first_training_example_and_model(data)
@@ -309,12 +310,22 @@ class Engine(ABC, DataDimensionality):
                 self.logger.exception(f"Exiting with exception: {e}.")
                 self.checkpoint_and_write_to_logs(iter_idx)
                 sys.exit(-1)
+            except NaNLossException as e:
+                if fail_counter_nan == 5:
+                    self.checkpoint_and_write_to_logs(iter_idx)
+                    raise TrainingException(f"Loss is NaN, had five exceptions in a row: {e}.")
+                self.logger.info(f"Loss is NaN at iteration {iter_idx} with error {e}. Skipping batch.")
+                self.__optimizer.zero_grad()  # type: ignore
+                gc.collect()
+                torch.cuda.empty_cache()
+                fail_counter_nan += 1
+                continue
             except RuntimeError as e:
                 # Maybe string can change
                 if "out of memory" in str(e):
                     if fail_counter == 5:
                         self.checkpoint_and_write_to_logs(iter_idx)
-                        raise TrainingException(f"OOM, had three exceptions in a row tries: {e}.")
+                        raise TrainingException(f"OOM, had five exceptions in a row tries: {e}.")
                     fail_counter += 1
                     self.logger.info(f"OOM Error: {e}. Skipping batch. Retry {fail_counter}/5.")
                     self.__optimizer.zero_grad()  # type: ignore
@@ -328,6 +339,9 @@ class Engine(ABC, DataDimensionality):
 
             if fail_counter > 0:
                 self.logger.info("Recovered from OOM, skipped batch.")
+            if fail_counter_nan > 0:
+                self.logger.info("Recovered from NaN loss, skipped batch.")
+            fail_counter_nan = 0
             fail_counter = 0
             # Gradient accumulation
             if (iter_idx + 1) % self.cfg.training.gradient_steps == 0:  # type: ignore

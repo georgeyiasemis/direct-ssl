@@ -27,7 +27,7 @@ from direct.data import transforms as T
 from direct.engine import DoIterationOutput
 from direct.nn.mri_models import MRIModelEngine
 from direct.nn.ssl.mri_models import JSSLMRIModelEngine, SSLMRIModelEngine
-from direct.types import TensorOrNone
+from direct.types import NaNLossException, TensorOrNone
 from direct.utils import detach_dict, dict_to_device
 
 
@@ -137,6 +137,9 @@ class VSharpNet3DEngine(MRIModelEngine):
                 )
 
             loss = sum(loss_dict.values())  # type: ignore
+
+            if torch.isnan(loss):
+                raise NaNLossException(f"NaN loss detected during training.")
 
         if self.model.training:
             self._scaler.scale(loss).backward()
