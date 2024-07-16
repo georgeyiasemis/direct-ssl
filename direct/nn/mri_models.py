@@ -825,9 +825,9 @@ class MRIModelEngine(Engine):
                 if add_target:
                     curr_target = curr_volume.clone()
 
-            curr_volume[slice_counter : slice_counter + output_abs.shape[0], ...] = output_abs.cpu()
+            curr_volume[slice_counter : slice_counter + output_abs.shape[0], ...] = output_abs
             if add_target:
-                curr_target[slice_counter : slice_counter + output_abs.shape[0], ...] = target_abs.cpu()  # type: ignore
+                curr_target[slice_counter : slice_counter + output_abs.shape[0], ...] = target_abs  # type: ignore
 
             slice_counter += output_abs.shape[0]
 
