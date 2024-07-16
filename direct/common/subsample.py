@@ -2568,7 +2568,13 @@ class KtRadialMaskFunc(KtBaseMaskFunc):
             center_fraction, acceleration = self.choose_acceleration()
             offset_angle = self.rng.uniform(0, 360)
 
-        acs_mask = centered_disk_mask((num_rows, num_cols), center_fraction)
+        acs_mask = np.zeros((num_rows, num_cols)).astype(bool)
+        num_low_freqs_cols = int(round(num_cols * center_fraction))
+        acs_mask[
+            num_rows // 2 - num_low_freqs_cols // 2 : num_rows // 2 + num_low_freqs_cols // 2,
+            num_cols // 2 - num_low_freqs_cols // 2 : num_cols // 2 + num_low_freqs_cols // 2,
+        ] = True
+
         num_low_freqs = acs_mask.sum()
         acs_mask = np.tile(acs_mask, (nt, 1, 1))
 
