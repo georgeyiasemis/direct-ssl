@@ -120,28 +120,34 @@ class VSharpNet3DEngine(MRIModelEngine):
                 loss_dict = self.compute_loss_on_data(
                     loss_dict, loss_fns, data, T.modulus_if_complex(output_image), None, auxiliary_loss_weights[i]
                 )
-                output_kspace = data["masked_kspace"] + T.apply_mask(
-                    T.apply_padding(
+                if self.model.training:
+                    output_kspace = data["masked_kspace"] + T.apply_mask(
                         self.forward_operator(
                             T.expand_operator(output_image, data["sensitivity_map"], dim=self._coil_dim),
                             dim=self._spatial_dims,
                         ),
-                        padding=data.get("padding", None),
-                    ),
-                    ~data["sampling_mask"],
-                    return_mask=False,
-                )
-                # Compute loss on k-space
-                loss_dict = self.compute_loss_on_data(
-                    loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
+                        ~data["sampling_mask"],
+                        return_mask=False,
+                    )
+                    # Compute loss on k-space
+                    loss_dict = self.compute_loss_on_data(
+                        loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
+                    )
+
+            if not self.model.training:
+                output_kspace = self.forward_operator(
+                    T.expand_operator(output_images[-1], data["sensitivity_map"], dim=self._coil_dim),
+                    dim=self._spatial_dims,
                 )
 
+                output_kspace = data["masked_kspace"] + T.apply_mask(
+                    output_kspace, ~data["sampling_mask"], return_mask=False
+                )
             loss = sum(loss_dict.values())  # type: ignore
 
+        if self.model.training:
             if torch.isnan(loss):
                 raise NaNLossException(f"NaN loss detected during training.")
-
-        if self.model.training:
             self._scaler.scale(loss).backward()
 
         loss_dict = detach_dict(loss_dict)  # Detach dict, only used for logging.
@@ -165,10 +171,7 @@ class VSharpNet3DEngine(MRIModelEngine):
             )
 
             auxiliary_kspace = data["masked_kspace"] + T.apply_mask(
-                T.apply_padding(
-                    auxiliary_kspace,
-                    padding=data.get("padding", None),
-                ),
+                auxiliary_kspace,
                 ~data["sampling_mask"],
                 return_mask=False,
             )

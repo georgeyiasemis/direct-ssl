@@ -61,4 +61,5 @@ def predict_from_argparse(args: argparse.Namespace):
         args.mixed_precision,
         args.debug,
         False,
+        args.task,
     )
