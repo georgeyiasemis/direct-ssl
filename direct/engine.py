@@ -311,9 +311,9 @@ class Engine(ABC, DataDimensionality):
                 self.checkpoint_and_write_to_logs(iter_idx)
                 sys.exit(-1)
             except NaNLossException as e:
-                if fail_counter_nan == 5:
+                if fail_counter_nan == 100:
                     self.checkpoint_and_write_to_logs(iter_idx)
-                    raise TrainingException(f"Loss is NaN, had five exceptions in a row: {e}.")
+                    raise TrainingException(f"Loss is NaN, had 100 exceptions in a row: {e}.")
                 self.logger.info(f"Loss is NaN at iteration {iter_idx} with error {e}. Skipping batch.")
                 self.__optimizer.zero_grad()  # type: ignore
                 gc.collect()
