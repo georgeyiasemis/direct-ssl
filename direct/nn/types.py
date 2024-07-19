@@ -24,6 +24,7 @@ class InitType(DirectEnum):
     GRAPPA = "grappa"
     SENSE = "sense"
     ZERO_FILLED = "zero_filled"
+    ZERO_FILLED_SUM = "zero_filled_sum"
     ZEROS = "zeros"
 
 

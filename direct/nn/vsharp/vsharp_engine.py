@@ -108,18 +108,17 @@ class VSharpNet3DEngine(MRIModelEngine):
         output_kspace: TensorOrNone
 
         with autocast(enabled=self.mixed_precision):
-            output_images, _, auxiliary_kspace = self.forward_function(data)
-            # output_images = [T.modulus_if_complex(_, complex_axis=self._complex_dim) for _ in output_images]
+            output_images, _, auxiliary_image, auxiliary_kspace = self.forward_function(data)
             loss_dict = {k: torch.tensor([0.0], dtype=data["target"].dtype).to(self.device) for k in loss_fns.keys()}
 
             auxiliary_loss_weights = torch.logspace(-1, 0, steps=len(output_images)).to(output_images[0])
 
-            if auxiliary_kspace is not None:
+            if auxiliary_image is not None:
+                # Compute loss on auxiliary image
+                loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, auxiliary_image, None)
                 loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, auxiliary_kspace)
+
             for i, output_image in enumerate(output_images):
-                loss_dict = self.compute_loss_on_data(
-                    loss_dict, loss_fns, data, T.modulus_if_complex(output_image), None, auxiliary_loss_weights[i]
-                )
                 if self.model.training:
                     output_kspace = data["masked_kspace"] + T.apply_mask(
                         self.forward_operator(
@@ -134,6 +133,16 @@ class VSharpNet3DEngine(MRIModelEngine):
                         loss_dict, loss_fns, data, None, output_kspace, auxiliary_loss_weights[i]
                     )
 
+                    output_image = T.reduce_operator(
+                        self.backward_operator(output_kspace, dim=self._spatial_dims),
+                        data["sensitivity_map"],
+                        self._coil_dim,
+                    )
+                    # Compute loss on image
+                    loss_dict = self.compute_loss_on_data(
+                        loss_dict, loss_fns, data, T.modulus_if_complex(output_image), None, auxiliary_loss_weights[i]
+                    )
+
             if not self.model.training:
                 output_kspace = self.forward_operator(
                     T.expand_operator(output_images[-1], data["sensitivity_map"], dim=self._coil_dim),
@@ -142,6 +151,14 @@ class VSharpNet3DEngine(MRIModelEngine):
 
                 output_kspace = data["masked_kspace"] + T.apply_mask(
                     output_kspace, ~data["sampling_mask"], return_mask=False
+                )
+
+                output_image = T.modulus(
+                    T.reduce_operator(
+                        self.backward_operator(output_kspace, dim=self._spatial_dims),
+                        data["sensitivity_map"],
+                        self._coil_dim,
+                    )
                 )
             loss = sum(loss_dict.values())  # type: ignore
 
@@ -152,7 +169,6 @@ class VSharpNet3DEngine(MRIModelEngine):
 
         loss_dict = detach_dict(loss_dict)  # Detach dict, only used for logging.
 
-        output_image = output_images[-1]
         return DoIterationOutput(
             output_image=output_image,
             output_kspace=output_kspace if not self.model.training else None,
@@ -175,17 +191,24 @@ class VSharpNet3DEngine(MRIModelEngine):
                 ~data["sampling_mask"],
                 return_mask=False,
             )
+            auxiliary_image = T.modulus(
+                T.reduce_operator(
+                    self.backward_operator(auxiliary_kspace, dim=self._spatial_dims),
+                    data["sensitivity_map"],
+                    self._coil_dim,
+                )
+            )
         else:
-            auxiliary_kspace = None
+            auxiliary_image = None
 
         output_images = self.model(
-            masked_kspace=auxiliary_kspace if auxiliary_kspace is not None else data["masked_kspace"],
+            masked_kspace=data["masked_kspace"],
             sampling_mask=data["sampling_mask"],
             sensitivity_map=data["sensitivity_map"],
-            calib_kspace=data["calibration_kspace"] if self.cfg.model.image_init == "grappa" else None,
+            initial_image=auxiliary_image,
         )  # shape (batch, height,  width, complex[=2])
 
-        return output_images, None, auxiliary_kspace
+        return output_images, None, auxiliary_image, auxiliary_kspace
 
 
 class VSharpNetEngine(MRIModelEngine):

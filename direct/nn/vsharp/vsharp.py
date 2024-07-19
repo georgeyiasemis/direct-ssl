@@ -557,7 +557,7 @@ class VSharpNet3D(nn.Module):
         masked_kspace: torch.Tensor,
         sensitivity_map: torch.Tensor,
         sampling_mask: torch.Tensor,
-        calib_kspace: Optional[torch.Tensor] = None,
+        input_image: Optional[torch.Tensor] = None,
     ) -> list[torch.Tensor]:
         """Computes forward pass of :class:`VSharpNet3D`.
 
@@ -569,9 +569,9 @@ class VSharpNet3D(nn.Module):
             Sensitivity map of shape (N, coil, slice, height, width, complex=2).
         sampling_mask : torch.Tensor
             Sampling mask of shape (N, 1, 1 or slice, height, width, 1).
-        calib_kspace : torch.Tensor, optional
-            Calibration k-space of shape (N, coil, slice, height, width, complex=2).
-            Will be used for GRAPPA initialization if `image_init` is `InitType.GRAPPA`.
+        input_image : torch.Tensor, optional
+            Input image of shape (N, slice, height, width, complex=2).
+            Will be used for `InitType.INPUT_IMAGE` initialization.
             Default: None.
 
         Returns
@@ -585,17 +585,12 @@ class VSharpNet3D(nn.Module):
             sensitivity_map=sensitivity_map,
             dim=self._coil_dim,
         )
-        if self.image_init == InitType.SENSE:
-            z = x.clone()
-        elif self.image_init == InitType.GRAPPA and calib_kspace is not None:
-            with torch.no_grad():
-                z = grappa_reconstruction_torch_batch(
-                    kspace_data=masked_kspace,
-                    calib_data=calib_kspace,
-                )
-                z = self.backward_operator(z, dim=self._spatial_dims).sum(self._coil_dim) 
-        else:
+        if self.image_init == InitType.ZERO_FILLED_SUM:
             z = self.backward_operator(masked_kspace, dim=self._spatial_dims).sum(self._coil_dim)
+        elif self.image_init == InitType.INPUT_IMAGE and input_image is not None:
+            z = input_image
+        else:
+            z = x.clone()
 
         u = self.initializer(x.permute(0, 4, 1, 2, 3)).permute(0, 2, 3, 4, 1)
 
