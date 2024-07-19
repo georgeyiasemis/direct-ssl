@@ -205,7 +205,7 @@ class VSharpNet3DEngine(MRIModelEngine):
             masked_kspace=data["masked_kspace"],
             sampling_mask=data["sampling_mask"],
             sensitivity_map=data["sensitivity_map"],
-            initial_image=auxiliary_image,
+            input_image=auxiliary_image,
         )  # shape (batch, height,  width, complex[=2])
 
         return output_images, None, auxiliary_image, auxiliary_kspace
