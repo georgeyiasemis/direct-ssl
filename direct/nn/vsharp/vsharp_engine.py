@@ -115,7 +115,7 @@ class VSharpNet3DEngine(MRIModelEngine):
 
             if auxiliary_image is not None:
                 # Compute loss on auxiliary image
-                loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, auxiliary_image, None)
+                loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, T.modulus(auxiliary_image), None)
                 loss_dict = self.compute_loss_on_data(loss_dict, loss_fns, data, None, auxiliary_kspace)
 
             for i, output_image in enumerate(output_images):
@@ -191,12 +191,10 @@ class VSharpNet3DEngine(MRIModelEngine):
                 ~data["sampling_mask"],
                 return_mask=False,
             )
-            auxiliary_image = T.modulus(
-                T.reduce_operator(
-                    self.backward_operator(auxiliary_kspace, dim=self._spatial_dims),
-                    data["sensitivity_map"],
-                    self._coil_dim,
-                )
+            auxiliary_image = T.reduce_operator(
+                self.backward_operator(auxiliary_kspace, dim=self._spatial_dims),
+                data["sensitivity_map"],
+                self._coil_dim,
             )
         else:
             auxiliary_image = None
