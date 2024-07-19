@@ -530,9 +530,9 @@ class VSharpNet3D(nn.Module):
         self.forward_operator = forward_operator
         self.backward_operator = backward_operator
 
-        if image_init not in [InitType.SENSE, InitType.ZERO_FILLED, InitType.GRAPPA]:
+        if image_init not in [InitType.SENSE, InitType.ZERO_FILLED, InitType.INPUT_IMAGE]:
             raise ValueError(
-                f"Unknown image_initialization. Expected `InitType.SENSE`, `InitType.ZERO_FILLED` or `InitType.GRAPPA`."
+                f"Unknown image_initialization. Expected `InitType.SENSE`, `InitType.ZERO_FILLED` or `InitType.INPUT_IMAGE`. "
                 f"Got {image_init}."
             )
 
