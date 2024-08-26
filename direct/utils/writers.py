@@ -9,7 +9,6 @@ import h5py  # type: ignore
 import numpy as np
 import scipy
 
-from direct.cmrxrecon.fastmri import complex_abs, ifft2c, rss
 from direct.cmrxrecon.run4ranking import run4Ranking
 
 logger = logging.getLogger(__name__)
@@ -78,16 +77,11 @@ def write_output_to_mat(
         save_path.parent.mkdir(exist_ok=True, parents=True)
         logger.info(f"({idx + 1}/{len(output)}): Writing {save_path}...")
 
-        volume = volume.permute(0, 1, 2, 4, 3, 5)
-        reconstruction = ifft2c(volume)
-        reconstruction = complex_abs(reconstruction)  # Compute absolute value to get a real image
-        reconstruction = rss(reconstruction, dim=1)
-
-        reconstruction = reconstruction.cpu().numpy()
-        reconstruction = reconstruction.transpose(3, 2, 0, 1)
+        reconstruction = volume[:, 0].cpu().numpy()
+        reconstruction = reconstruction.transpose(2, 3, 0, 1)
 
         if "blood" in file_name:
-            reconstruction = reconstruction[..., 0]
+            reconstruction = reconstruction[..., 6]
 
         img4ranking = run4Ranking(reconstruction, file_name)
 

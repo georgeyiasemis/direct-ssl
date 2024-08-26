@@ -1010,8 +1010,8 @@ class CMRxRecon2024Dataset(Dataset):
                 if not filename.exists():
                     raise OSError(f"{filename} does not exist.")
                 kspace_shape = h5py.File(filename, "r")[self.kspace_key].shape
-                if len(kspace_shape) == 4:
-                    kspace_shape = (1,) + kspace_shape  # BlackBlood data is of shape(nz, nc, ny, nx)
+                if "blood" in str(filename):
+                    kspace_shape = (12,) + kspace_shape  # BlackBlood data is of shape(nz, nc, ny, nx)
                 self.verify_extra_mat_integrity(filename, extra_mats=extra_mats)
             except FileNotFoundError as exc:
                 self.logger.warning("%s not found. Failed with: %s. Skipping...", filename, exc)
@@ -1092,29 +1092,19 @@ class CMRxRecon2024Dataset(Dataset):
         """
         data = h5py.File(filename, "r")
         kspace_data = data[key]
+
+        if "blood" in str(filename):
+            kspace_data = np.stack([kspace_data] * 12)
         shape = kspace_data.shape
 
         if self.kspace_context is None:
-            if len(shape) == 4:
-                curr_data = np.array(kspace_data[slice_no])
-            else:
-                inds = {
-                    (i): (k, l) for i, (k, l) in enumerate([(k, l) for k in range(shape[0]) for l in range(shape[1])])
-                }
-                ind = inds[slice_no]
-                curr_data = np.array(kspace_data[ind[0]][ind[1]])
+            inds = {(i): (k, l) for i, (k, l) in enumerate([(k, l) for k in range(shape[0]) for l in range(shape[1])])}
+            ind = inds[slice_no]
+            curr_data = np.array(kspace_data[ind[0]][ind[1]])
         elif self.kspace_context == "slice":
-            # Slice dimension
-            if len(shape) == 4:
-                curr_data = np.array(kspace_data)
-            else:
-                curr_data = np.array(kspace_data[slice_no])
+            curr_data = np.array(kspace_data[slice_no])
         else:
-            # Time dimension
-            if len(shape) == 4:
-                curr_data = np.array(kspace_data[slice_no])[None]
-            else:
-                curr_data = np.array(kspace_data[:, slice_no])
+            curr_data = np.array(kspace_data[:, slice_no])
 
         extra_data = {}
 
@@ -1241,7 +1231,7 @@ class CMRxRecon2024Dataset(Dataset):
                         nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
                         ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
                     ]
-                
+
             elif self.acs_type == "radial":
                 sample["calibration_kspace"] = sample["kspace"][
                     ...,

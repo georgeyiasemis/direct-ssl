@@ -189,8 +189,7 @@ class Engine(ABC, DataDimensionality):
         )
         # TODO: Batch size can be much larger, perhaps have a different batch size during evaluation.
         data_loader = self.build_loader(dataset, batch_sampler=batch_sampler, num_workers=num_workers)
-        output = list(self.reconstruct_volumes_kspaces(data_loader, add_target=False, crop=crop))
-        # output = list(self.reconstruct_volumes(data_loader, add_target=False, crop=crop))
+        output = list(self.reconstruct_volumes(data_loader, add_target=False, crop=crop))
 
         return output
 
@@ -308,11 +307,9 @@ class Engine(ABC, DataDimensionality):
                 # if saved at state iter_idx, which is the current state,
                 # so the computation can restart from the last iteration.
                 self.logger.exception(f"Exiting with exception: {e}.")
-                self.checkpoint_and_write_to_logs(iter_idx)
                 sys.exit(-1)
             except NaNLossException as e:
                 if fail_counter_nan == 100:
-                    self.checkpoint_and_write_to_logs(iter_idx)
                     raise TrainingException(f"Loss is NaN, had 100 exceptions in a row: {e}.")
                 self.logger.info(f"Loss is NaN at iteration {iter_idx} with error {e}. Skipping batch.")
                 self.__optimizer.zero_grad()  # type: ignore
@@ -601,8 +598,6 @@ class Engine(ABC, DataDimensionality):
         elif initialization:
             self.logger.info(f"Initializing from {initialization}...")
             self.checkpointer.load_models_from_file(initialization)
-            start_with_validation = True
-            self.logger.info("Setting start_with_validation to True.")
 
         if "__version__" in checkpoint:
             self.logger.info(f"DIRECT version of checkpoint: {checkpoint['__version__']}.")
