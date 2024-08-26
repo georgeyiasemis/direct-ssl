@@ -354,7 +354,8 @@ def compute_weights_loop(
 
 
 def grappa_reconstruction_torch(
-    kspace_data: torch.Tensor, calib_data: torch.Tensor, kernel_geometry_slice: int = 0
+    kspace_data: torch.Tensor,
+    calib_data: torch.Tensor,
 ) -> torch.Tensor:
     """Perform GRAPPA technique on pytorch k-space tensor.
 
@@ -374,24 +375,29 @@ def grappa_reconstruction_torch(
     kspace_data = kspace_data.permute(1, 3, 0, 2)  # (num_slices, num_cols, num_coils, num_rows)
     calib_data = calib_data.permute(1, 3, 0, 2)  # (num_slices, num_cols_cal, num_coils, num_rows_cal)
 
-    grappa_obj = GrappaTorch(kspace_data[kernel_geometry_slice], kernel_size=(5, 5), coil_axis=1)
-
-    kspace_post_grappa = torch.zeros(kspace_data.shape, dtype=kspace_data.dtype)
+    kspace_post_grappa = kspace_data.clone()
     for slice_num in range(kspace_data.shape[0]):
-        # calculate GRAPPA weights for each slice
-        grappa_weights, grappa_weights_len = grappa_obj.compute_weights(calib_data[slice_num])
-        # apply GRAPPA weights to each slice
-        kspace_post_grappa[slice_num] = torch.from_numpy(
-            grappa_obj.apply_weights(
-                kspace_data[slice_num].cpu().numpy(), grappa_weights.cpu().numpy(), grappa_weights_len.cpu().numpy()
-            )
-        ).to(kspace_data.device)
-
+        try:
+            grappa_obj = GrappaTorch(kspace_data[slice_num], kernel_size=(5, 5), coil_axis=1)
+            # calculate GRAPPA weights for each slice
+            grappa_weights, grappa_weights_len = grappa_obj.compute_weights(calib_data[slice_num])
+            # apply GRAPPA weights to each slice
+            kspace_post_grappa[slice_num] = torch.from_numpy(
+                grappa_obj.apply_weights(
+                    kspace_data[slice_num].cpu().numpy(),
+                    grappa_weights.cpu().numpy(),
+                    grappa_weights_len.cpu().numpy(),
+                )
+            ).to(kspace_data.device)
+        except Exception as err:
+            print(f"GRAPPA error in slice {slice_num}: {err}")
+            continue
     return kspace_post_grappa.permute(2, 0, 3, 1)  # (num_coils, num_slices, num_rows, num_cols)
 
 
 def grappa_reconstruction_torch_batch(
-    kspace_data: torch.Tensor, calib_data: torch.Tensor, kernel_geometry_slice: Optional[int | tuple] = None
+    kspace_data: torch.Tensor,
+    calib_data: torch.Tensor,
 ) -> torch.Tensor:
     """Perform GRAPPA technique on pytorch k-space tensor.
 
@@ -401,9 +407,6 @@ def grappa_reconstruction_torch_batch(
         Input k-space data with shape (batch_size, num_coils, num_slices, num_rows, num_cols).
     calib_data : torch.Tensor
         Calibration data for GRAPPA with shape (batch_size, num_coils, num_slices, num_rows_cal, num_cols_cal).
-    kernel_geometry_slice : int or tuple, optional
-        The slice of the kernel geometry to use for each batch. If an integer is provided, the same slice will be used
-        for all batches. If a tuple is provided, the slice will be used for each batch. Default is None.
 
     Returns
     -------
@@ -412,18 +415,13 @@ def grappa_reconstruction_torch_batch(
     """
     batch_size = kspace_data.shape[0]
 
-    if isinstance(kernel_geometry_slice, int):
-        kernel_geometry_slice = (kernel_geometry_slice,) * batch_size
-
-    if kernel_geometry_slice is None:
-        kernel_geometry_slice = [kspace_data[_].shape[1] // 2 for _ in range(batch_size)]
-
     kspace_data = torch.view_as_complex(kspace_data)
     kspace_grappa = torch.zeros(kspace_data.shape, dtype=kspace_data.dtype)
     calib_data = torch.view_as_complex(calib_data)
 
     for batch_idx in range(batch_size):
         kspace_grappa[batch_idx] = grappa_reconstruction_torch(
-            kspace_data[batch_idx], calib_data[batch_idx], kernel_geometry_slice[batch_idx]
+            kspace_data[batch_idx],
+            calib_data[batch_idx],
         )
     return torch.view_as_real(kspace_grappa).to(kspace_data.device)
