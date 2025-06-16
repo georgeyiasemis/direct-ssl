@@ -468,7 +468,6 @@ class RandomMaskFunc(CartesianVerticalMaskFunc):
         num_slc_or_time = shape[-4] if self.mode in [MaskFuncMode.DYNAMIC, MaskFuncMode.MULTISLICE] else 1
 
         with temp_seed(self.rng, seed):
-
             center_fraction, acceleration = self.choose_acceleration()
 
             if center_fraction < 1.0:
@@ -731,7 +730,6 @@ class EquispacedMaskFunc(CartesianVerticalMaskFunc):
         num_slc_or_time = shape[-4] if self.mode in [MaskFuncMode.DYNAMIC, MaskFuncMode.MULTISLICE] else 1
 
         with temp_seed(self.rng, seed):
-
             center_fraction, acceleration = self.choose_acceleration()
 
             if center_fraction < 1.0:
@@ -751,12 +749,21 @@ class EquispacedMaskFunc(CartesianVerticalMaskFunc):
             adjusted_accel = (acceleration * (num_low_freqs - num_cols)) / (num_low_freqs * acceleration - num_cols)
 
             mask = mask.reshape(num_slc_or_time, -1)  # In case mode != MaskFuncMode.STATIC:
-            for i in range(num_slc_or_time):
-                offset = self.rng.randint(0, round(adjusted_accel))
-                accel_samples = np.arange(offset, num_cols - 1, adjusted_accel)
-                accel_samples = np.around(accel_samples).astype(np.uint)
-                mask[i, accel_samples] = True
 
+            try:
+                for i in range(num_slc_or_time):
+                    offset = self.rng.randint(0, round(adjusted_accel))
+                    accel_samples = np.arange(offset, num_cols - 1, adjusted_accel)
+                    accel_samples = np.around(accel_samples).astype(np.uint)
+                    mask[i, accel_samples] = True
+            except Exception as e:
+                logger.warning(
+                    f"Could not create equispaced mask with acceleration {acceleration}, center fraction {center_fraction}, "
+                    f"and shape {shape}. "
+                    f"Error: {e} in EquispacedMaskFunc.mask_func(). "
+                    f"Returning mask with only center lines."
+                )
+                return self._reshape_and_add_coil_axis(self._broadcast_mask(mask, num_rows), shape)
         return self._reshape_and_add_coil_axis(self._broadcast_mask(mask, num_rows), shape)
 
 
@@ -991,7 +998,6 @@ class MagicMaskFunc(CartesianVerticalMaskFunc):
         num_slc_or_time = shape[-4] if self.mode in [MaskFuncMode.DYNAMIC, MaskFuncMode.MULTISLICE] else 1
 
         with temp_seed(self.rng, seed):
-
             center_fraction, acceleration = self.choose_acceleration()
 
             # This is essentially for CartesianMagicMaskFunc, indicating the excact number of low frequency lines
@@ -2500,8 +2506,8 @@ class KtRadialMaskFunc(KtBaseMaskFunc):
     ----------
     accelerations : Union[list[Number], tuple[Number, ...]]
         Amount of under-sampling.
-    center_fractions : Union[list[float], tuple[float, ...]]
-        Fraction of low-frequency columns (float < 1.0) or number of low-frequence columns (integer) to be retained.
+    center_fractions : Union[list[int], tuple[int, ...]]
+        Number of low-frequency (center) columns to be retained.
     uniform_range : bool, optional
         If True then an acceleration will be uniformly sampled between the two values, by default False.
     crop_corner : bool, optional
@@ -2511,7 +2517,7 @@ class KtRadialMaskFunc(KtBaseMaskFunc):
     def __init__(
         self,
         accelerations: Union[list[Number], tuple[Number, ...]],
-        center_fractions: Union[list[float], tuple[float, ...]],
+        center_fractions: Union[list[int], tuple[int, ...]],
         uniform_range: bool = False,
         crop_corner: bool = False,
     ) -> None:
@@ -2521,8 +2527,8 @@ class KtRadialMaskFunc(KtBaseMaskFunc):
         ----------
         accelerations : Union[list[Number], tuple[Number, ...]]
             Amount of under-sampling.
-        center_fractions : Union[list[float], tuple[float, ...]]
-            Fraction of low-frequency columns (float < 1.0) or number of low-frequence columns (integer) to be retained.
+        center_fractions : Union[list[int], tuple[int, ...]]
+            Number of low-frequency (center) columns to be retained.
         uniform_range : bool, optional
             If True then an acceleration will be uniformly sampled between the two values, by default False.
         crop_corner : bool, optional
@@ -2569,7 +2575,7 @@ class KtRadialMaskFunc(KtBaseMaskFunc):
             offset_angle = self.rng.uniform(0, 360)
 
         acs_mask = np.zeros((num_rows, num_cols)).astype(bool)
-        num_low_freqs_cols = int(round(num_cols * center_fraction))
+        num_low_freqs_cols = center_fraction
         acs_mask[
             num_rows // 2 - num_low_freqs_cols // 2 : num_rows // 2 + num_low_freqs_cols // 2,
             num_cols // 2 - num_low_freqs_cols // 2 : num_cols // 2 + num_low_freqs_cols // 2,
@@ -2619,8 +2625,8 @@ class KtUniformMaskFunc(KtBaseMaskFunc):
     ----------
     accelerations : Union[list[Number], tuple[Number, ...]]
         Amount of under-sampling.
-    center_fractions : Union[list[float], tuple[float, ...]]
-        Fraction of low-frequency columns (float < 1.0) or number of low-frequence columns (integer) to be retained.
+    center_fractions : Union[list[int], tuple[int, ...]]
+        Number of low-frequency (center) columns to be retained.
     uniform_range : bool, optional
         If True then an acceleration will be uniformly sampled between the two values, by default False.
     """
@@ -2637,8 +2643,8 @@ class KtUniformMaskFunc(KtBaseMaskFunc):
         ----------
         accelerations : Union[list[Number], tuple[Number, ...]]
             Amount of under-sampling.
-        center_fractions : Union[list[float], tuple[float, ...]]
-            Fraction of low-frequency columns (float < 1.0) or number of low-frequence columns (integer) to be retained.
+        center_fractions : Union[list[int], tuple[int, ...]]
+            Number of low-frequency (center) columns to be retained.
         uniform_range : bool, optional
             If True then an acceleration will be uniformly sampled between the two values, by default False.
         """
@@ -2678,9 +2684,8 @@ class KtUniformMaskFunc(KtBaseMaskFunc):
         (nt, num_rows, num_cols) = shape[-4:-1]
 
         with temp_seed(self.rng, seed):
-
             center_fraction, acceleration = self.choose_acceleration()
-            num_low_freqs = int(round(num_cols * center_fraction))
+            num_low_freqs = center_fraction
 
             # Fully sampled rectangle region
             acs_mask = self.zero_pad_to_center(np.ones((nt, num_rows, num_low_freqs)), [nt, num_rows, num_cols])
@@ -2695,10 +2700,19 @@ class KtUniformMaskFunc(KtBaseMaskFunc):
             ptmp = np.zeros(num_cols)
             ttmp = np.zeros(nt)
 
-            ptmp[
-                np.arange(self.rng.randint(0, adjusted_acceleration), num_cols, adjusted_acceleration).astype(int)
-            ] = 1
-            ttmp[np.arange(self.rng.randint(0, acceleration), nt, acceleration).astype(int)] = 1
+            try:
+                ptmp[
+                    np.arange(self.rng.randint(0, adjusted_acceleration), num_cols, adjusted_acceleration).astype(int)
+                ] = 1
+                ttmp[np.arange(self.rng.randint(0, acceleration), nt, acceleration).astype(int)] = 1
+            except Exception as exc:
+                logger.warning(
+                    f"Could not create equispaced mask with acceleration {acceleration}, center fraction {center_fraction}, "
+                    f"and shape {shape}. "
+                    f"Error: {exc}. in KtUniformMaskFunc.mask_func(). "
+                    f"Returning mask with only center lines."
+                )
+                return torch.from_numpy(acs_mask.astype(bool)[np.newaxis, ..., np.newaxis])
 
         top_mat = toeplitz(ptmp, ttmp)
         ind = np.where(top_mat.ravel())[0]
@@ -2726,8 +2740,8 @@ class KtGaussian1DMaskFunc(KtBaseMaskFunc):
     ----------
     accelerations : Union[list[Number], tuple[Number, ...]]
         Amount of under-sampling.
-    center_fractions : Union[list[float], tuple[float, ...]]
-        Fraction of low-frequency columns (float < 1.0) or number of low-frequence columns (integer) to be retained.
+    center_fractions : Union[list[int], tuple[int, ...]]
+        Number of low-frequency (center) columns to be retained.
     uniform_range : bool, optional
         If True then an acceleration will be uniformly sampled between the two values, by default False.
     alpha : float, optional
@@ -2740,7 +2754,7 @@ class KtGaussian1DMaskFunc(KtBaseMaskFunc):
     def __init__(
         self,
         accelerations: Union[list[Number], tuple[Number, ...]],
-        center_fractions: Union[list[float], tuple[float, ...]],
+        center_fractions: Union[list[int], tuple[int, ...]],
         uniform_range: bool = False,
         alpha: float = 0.28,
         std_scale: float = 5.0,
@@ -2751,8 +2765,8 @@ class KtGaussian1DMaskFunc(KtBaseMaskFunc):
         ----------
         accelerations : Union[list[Number], tuple[Number, ...]]
             Amount of under-sampling.
-        center_fractions : Union[list[float], tuple[float, ...]]
-            Fraction of low-frequency columns (float < 1.0) or number of low-frequence columns (integer) to be retained.
+        center_fractions : Union[list[int], tuple[int, ...]]
+            Number of low-frequency (center) columns to be retained.
         uniform_range : bool, optional
             If True then an acceleration will be uniformly sampled between the two values, by default False.
         alpha : float, optional
@@ -2799,51 +2813,60 @@ class KtGaussian1DMaskFunc(KtBaseMaskFunc):
         (nt, num_rows, num_cols) = shape[-4:-1]
 
         with temp_seed(self.rng, seed):
-
             center_fraction, acceleration = self.choose_acceleration()
-            num_low_freqs = int(round(num_cols * center_fraction))
+            num_low_freqs = center_fraction
 
             # Fully sampled rectangle region
             acs_mask = self.zero_pad_to_center(np.ones((nt, num_rows, num_low_freqs)), [nt, num_rows, num_cols])
 
             if return_acs:
                 return torch.from_numpy(acs_mask.astype(bool)[np.newaxis, ..., np.newaxis])
+            try:
+                adjusted_acceleration = (acceleration * (num_low_freqs - num_cols)) / (
+                    num_low_freqs * acceleration - num_cols
+                )
 
-            adjusted_acceleration = (acceleration * (num_low_freqs - num_cols)) / (
-                num_low_freqs * acceleration - num_cols
-            )
+                p1 = np.arange(-num_cols // 2, num_cols // 2)
+                t1 = []
 
-            p1 = np.arange(-num_cols // 2, num_cols // 2)
-            t1 = []
+                tr = round(num_cols / adjusted_acceleration)  # Number of readout lines per frame (temporal resolution)
+                ti = np.zeros(tr * nt, dtype=int)
+                ph = np.zeros(tr * nt, dtype=int)
 
-            tr = round(num_cols / adjusted_acceleration)  # Number of readout lines per frame (temporal resolution)
-            ti = np.zeros(tr * nt, dtype=int)
-            ph = np.zeros(tr * nt, dtype=int)
+                sigma = num_cols / self.std_scale  # Std of the Gaussian envelope for sampling density
 
-            sigma = num_cols / self.std_scale  # Std of the Gaussian envelope for sampling density
+                prob = 0.1 + self.alpha / (1 - self.alpha + 1e-10) * np.exp(-(p1**2) / (sigma**2))
 
-            prob = 0.1 + self.alpha / (1 - self.alpha + 1e-10) * np.exp(-(p1**2) / (sigma**2))
+                ind = 0
+                for i in range(-nt // 2, nt // 2):
+                    a = np.where(np.array(t1) == i)[0]
+                    n_tmp = tr - len(a)
+                    prob_tmp = prob.copy()
+                    prob_tmp[a] = 0
+                    p_tmp = self.rng.choice(
+                        np.arange(-num_cols // 2, num_cols // 2), n_tmp, p=prob_tmp / prob_tmp.sum()
+                    )
+                    ti[ind : ind + n_tmp] = i
+                    ph[ind : ind + n_tmp] = p_tmp
+                    ind += n_tmp
 
-            ind = 0
-            for i in range(-nt // 2, nt // 2):
-                a = np.where(np.array(t1) == i)[0]
-                n_tmp = tr - len(a)
-                prob_tmp = prob.copy()
-                prob_tmp[a] = 0
-                p_tmp = self.rng.choice(np.arange(-num_cols // 2, num_cols // 2), n_tmp, p=prob_tmp / prob_tmp.sum())
-                ti[ind : ind + n_tmp] = i
-                ph[ind : ind + n_tmp] = p_tmp
-                ind += n_tmp
+                ph, ti = self.resolve_duplicates_on_kt_grid(ph, ti, num_cols, nt)
+                samp = np.zeros((nt, num_cols), dtype=int)
+                inds = np.round(num_cols * (ti + nt // 2) + (ph + num_cols // 2)).astype(int)
+                samp.ravel()[inds] = 1
+                samp = samp.T
 
-            ph, ti = self.resolve_duplicates_on_kt_grid(ph, ti, num_cols, nt)
-            samp = np.zeros((nt, num_cols), dtype=int)
-            inds = np.round(num_cols * (ti + nt // 2) + (ph + num_cols // 2)).astype(int)
-            samp.ravel()[inds] = 1
-            samp = samp.T
-
-            mask = np.tile(samp, (num_rows, 1, 1)).transpose(2, 0, 1)
-            mask = mask + acs_mask
-            mask = mask > 0
+                mask = np.tile(samp, (num_rows, 1, 1)).transpose(2, 0, 1)
+                mask = mask + acs_mask
+                mask = mask > 0
+            except Exception as exc:
+                logger.warning(
+                    f"Could not create equispaced mask with acceleration {acceleration}, center fraction {center_fraction}, "
+                    f"and shape {shape}. "
+                    f"Error: {exc}. in KtGaussian1DMaskFunc.mask_func(). "
+                    f"Returning mask with only center lines."
+                )
+                return torch.from_numpy(acs_mask.astype(bool)[np.newaxis, ..., np.newaxis])
 
             return self._reshape_and_add_coil_axis(mask, shape)
 

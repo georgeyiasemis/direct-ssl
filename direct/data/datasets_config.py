@@ -202,6 +202,20 @@ class CMRxRecon2024Config(DatasetConfig):
 
 
 @dataclass
+class CMRxRecon2025Config(DatasetConfig):
+    data_root: Optional[str] = None
+    filenames_filter: Optional[list[str]] = None
+    filenames_lists: Optional[list[str]] = None
+    filenames_lists_root: Optional[str] = None
+    regex_filter: Optional[str] = None
+    kspace_key: str = "kspace_full"
+    text_description: Optional[str] = None
+    compute_mask: bool = False
+    kspace_context: Optional[str] = "time"
+    acs_type: str = "auto"
+
+
+@dataclass
 class FastMRIConfig(H5SliceConfig):
     pass_attrs: bool = True
 

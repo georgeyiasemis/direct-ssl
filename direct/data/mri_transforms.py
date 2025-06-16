@@ -197,7 +197,9 @@ class RandomFlip(DirectTransform):
                 else (
                     (-1,)
                     if self.flip == "vertical"
-                    else (-2, -1) if self.flip == "both" else (random.SystemRandom().choice([-2, -1]),)
+                    else (-2, -1)
+                    if self.flip == "both"
+                    else (random.SystemRandom().choice([-2, -1]),)
                 )
             )
 
@@ -2263,6 +2265,15 @@ def build_supervised_mri_transforms(
                 ),
             )
         ]
+    if pad:
+        mri_transforms += [
+            PadKspace(
+                pad_shape=pad,
+                forward_operator=forward_operator,
+                backward_operator=backward_operator,
+                kspace_key=KspaceKey.KSPACE,
+            )
+        ]
     if crop:
         mri_transforms += [
             CropKspace(
@@ -2282,15 +2293,6 @@ def build_supervised_mri_transforms(
                 backward_operator=backward_operator,
                 rescale_mode=rescale_mode,
                 rescale_2d_if_3d=rescale_2d_if_3d,
-                kspace_key=KspaceKey.KSPACE,
-            )
-        ]
-    if pad:
-        mri_transforms += [
-            PadKspace(
-                pad_shape=pad,
-                forward_operator=forward_operator,
-                backward_operator=backward_operator,
                 kspace_key=KspaceKey.KSPACE,
             )
         ]

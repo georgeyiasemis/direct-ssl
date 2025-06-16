@@ -320,11 +320,17 @@ class Engine(ABC, DataDimensionality):
             except RuntimeError as e:
                 # Maybe string can change
                 if "out of memory" in str(e):
-                    if fail_counter == 5:
+                    if fail_counter == 10:
                         self.checkpoint_and_write_to_logs(iter_idx)
-                        raise TrainingException(f"OOM, had five exceptions in a row tries: {e}.")
+                        raise TrainingException(f"OOM, had ten exceptions in a row tries: {e}.")
                     fail_counter += 1
-                    self.logger.info(f"OOM Error: {e}. Skipping batch. Retry {fail_counter}/5.")
+                    self.logger.info(
+                        f"OOM Error: {e}. Error occurred with data: "
+                        f"filename: {data['filename'] if 'filename' in data else 'N/A'}. "
+                        f"slice_no: {data['slice_no'] if 'slice_no' in data else 'N/A'}. "
+                        f"shape: {data['masked_kspace'].shape if 'masked_kspace' in data else 'N/A'}. "
+                        f"Skipping batch. Retry {fail_counter}/10."
+                    )
                     self.__optimizer.zero_grad()  # type: ignore
                     gc.collect()
                     torch.cuda.empty_cache()
