@@ -1403,8 +1403,10 @@ class CMRxRecon2025Dataset(Dataset):
                 if not filename.exists():
                     raise OSError(f"{filename} does not exist.")
                 kspace_shape = h5py.File(filename, "r")[self.kspace_key].shape
-                if any(name in str(filename) for name in ["blood", "T1w", "T2w"]):
-                    kspace_shape = (12,) + kspace_shape  # BlackBlood, T1w and T2w data is of shape(nz, nc, ny, nx)
+                if any(name in str(filename) for name in ["T1w", "T2w"]):
+                    kspace_shape = (9,) + kspace_shape  # BlackBlood, T1w and T2w data is of shape(nz, nc, ny, nx)
+                elif "blood" in str(filename):
+                    kspace_shape = (12,) + kspace_shape
                 elif any(tp in str(filename) for tp in ["sax", "2ch", "3ch", "4ch"]) and "Center007_Siemens" in str(
                     filename
                 ):
@@ -1492,8 +1494,10 @@ class CMRxRecon2025Dataset(Dataset):
         data = h5py.File(filename, "r")
         kspace_data = data[key]
 
-        if any(name in str(filename) for name in ["blood", "T1w", "T2w"]):  # Blood, T1w and T2w data are 4D
-            kspace_data = np.stack([kspace_data] * 12)
+        if any(name in str(filename) for name in ["T1w", "T2w"]):  # T1w and T2w data are of shape(nz, nc, ny, nx)
+            kspace_data = np.stack([kspace_data] * 9)
+        elif "blood" in str(filename):
+            kspace_data = np.stack([kspace_data] * 12)  # BlackBlood data is of shape(nz, nc, ny, nx)
         elif any(tp in str(filename) for tp in ["sax", "2ch", "3ch", "4ch"]) and "Center007_Siemens" in str(filename):
             if len(kspace_data.shape) == 4:
                 # Insert a singleton dimension at position 1
