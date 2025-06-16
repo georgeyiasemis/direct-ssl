@@ -1,0 +1,2923 @@
+physics:
+    forward_operator: fft2
+    backward_operator: ifft2
+training:
+    datasets:
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1000k_to_1100k_max_204x518_2023_2024_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1000k_to_1100k_max_204x518_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [518, 204]
+                padding_eps: 0.0
+                crop: [518, 204]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1000k_to_1100k_max_204x518_2023_2024_KtUniform
+            filenames_lists:
+                - ../lists/prod_1000k_to_1100k_max_204x518_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [518, 204]
+                padding_eps: 0.0
+                crop: [518, 204]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1000k_to_1100k_max_204x518_2023_2024_KtRadial
+            filenames_lists:
+                - ../lists/prod_1000k_to_1100k_max_204x518_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [518, 204]
+                padding_eps: 0.0
+                crop: [518, 204]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1000k_to_1100k_max_204x518_2023_2024_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1000k_to_1100k_max_204x518_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [518, 204]
+                padding_eps: 0.0
+                crop: [518, 204]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1000k_to_1100k_max_204x518_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1000k_to_1100k_max_204x518_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [518, 204]
+                padding_eps: 0.0
+                crop: [518, 204]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1000k_to_1100k_max_204x518_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_1000k_to_1100k_max_204x518_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [518, 204]
+                padding_eps: 0.0
+                crop: [518, 204]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1000k_to_1100k_max_204x518_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_1000k_to_1100k_max_204x518_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [518, 204]
+                padding_eps: 0.0
+                crop: [518, 204]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1000k_to_1100k_max_204x518_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1000k_to_1100k_max_204x518_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [518, 204]
+                padding_eps: 0.0
+                crop: [518, 204]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_100k_to_200k_max_200x518_2023_2024_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_100k_to_200k_max_200x518_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [518, 200]
+                padding_eps: 0.0
+                crop: [518, 200]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_100k_to_200k_max_200x518_2023_2024_KtUniform
+            filenames_lists:
+                - ../lists/prod_100k_to_200k_max_200x518_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [518, 200]
+                padding_eps: 0.0
+                crop: [518, 200]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_100k_to_200k_max_200x518_2023_2024_KtRadial
+            filenames_lists:
+                - ../lists/prod_100k_to_200k_max_200x518_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [518, 200]
+                padding_eps: 0.0
+                crop: [518, 200]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_100k_to_200k_max_200x518_2023_2024_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_100k_to_200k_max_200x518_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [518, 200]
+                padding_eps: 0.0
+                crop: [518, 200]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_100k_to_200k_max_200x518_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_100k_to_200k_max_200x518_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [518, 200]
+                padding_eps: 0.0
+                crop: [518, 200]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_100k_to_200k_max_200x518_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_100k_to_200k_max_200x518_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [518, 200]
+                padding_eps: 0.0
+                crop: [518, 200]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_100k_to_200k_max_200x518_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_100k_to_200k_max_200x518_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [518, 200]
+                padding_eps: 0.0
+                crop: [518, 200]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_100k_to_200k_max_200x518_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_100k_to_200k_max_200x518_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [518, 200]
+                padding_eps: 0.0
+                crop: [518, 200]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1100k_to_1200k_max_224x516_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1100k_to_1200k_max_224x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 224]
+                padding_eps: 0.0
+                crop: [516, 224]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1100k_to_1200k_max_224x516_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_1100k_to_1200k_max_224x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 224]
+                padding_eps: 0.0
+                crop: [516, 224]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1100k_to_1200k_max_224x516_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_1100k_to_1200k_max_224x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 224]
+                padding_eps: 0.0
+                crop: [516, 224]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1100k_to_1200k_max_224x516_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1100k_to_1200k_max_224x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 224]
+                padding_eps: 0.0
+                crop: [516, 224]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1200k_to_1300k_max_240x516_2023_2024_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1200k_to_1300k_max_240x516_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [516, 240]
+                padding_eps: 0.0
+                crop: [490, 240]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1200k_to_1300k_max_240x516_2023_2024_KtUniform
+            filenames_lists:
+                - ../lists/prod_1200k_to_1300k_max_240x516_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [516, 240]
+                padding_eps: 0.0
+                crop: [490, 240]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1200k_to_1300k_max_240x516_2023_2024_KtRadial
+            filenames_lists:
+                - ../lists/prod_1200k_to_1300k_max_240x516_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [516, 240]
+                padding_eps: 0.0
+                crop: [490, 240]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1200k_to_1300k_max_240x516_2023_2024_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1200k_to_1300k_max_240x516_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [516, 240]
+                padding_eps: 0.0
+                crop: [490, 240]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1200k_to_1300k_max_240x516_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1200k_to_1300k_max_240x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 240]
+                padding_eps: 0.0
+                crop: [490, 240]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1200k_to_1300k_max_240x516_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_1200k_to_1300k_max_240x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 240]
+                padding_eps: 0.0
+                crop: [490, 240]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1200k_to_1300k_max_240x516_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_1200k_to_1300k_max_240x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 240]
+                padding_eps: 0.0
+                crop: [490, 240]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1200k_to_1300k_max_240x516_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1200k_to_1300k_max_240x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 240]
+                padding_eps: 0.0
+                crop: [490, 240]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1300k_to_1400k_max_246x512_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1300k_to_1400k_max_246x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 246]
+                padding_eps: 0.0
+                crop: [486, 246]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1300k_to_1400k_max_246x512_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_1300k_to_1400k_max_246x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 246]
+                padding_eps: 0.0
+                crop: [486, 246]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1300k_to_1400k_max_246x512_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_1300k_to_1400k_max_246x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 246]
+                padding_eps: 0.0
+                crop: [486, 246]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1300k_to_1400k_max_246x512_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1300k_to_1400k_max_246x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 246]
+                padding_eps: 0.0
+                crop: [486, 246]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1400k_to_1500k_max_278x512_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1400k_to_1500k_max_278x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 278]
+                padding_eps: 0.0
+                crop: [460, 264]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1400k_to_1500k_max_278x512_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_1400k_to_1500k_max_278x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 278]
+                padding_eps: 0.0
+                crop: [460, 264]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1400k_to_1500k_max_278x512_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_1400k_to_1500k_max_278x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 278]
+                padding_eps: 0.0
+                crop: [460, 264]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [19, 19, 19, 19, 19]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1400k_to_1500k_max_278x512_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1400k_to_1500k_max_278x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 278]
+                padding_eps: 0.0
+                crop: [460, 264]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1500k_to_1600k_max_298x512_2023_2024_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1500k_to_1600k_max_298x512_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [512, 298]
+                padding_eps: 0.0
+                crop: [460, 268]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1500k_to_1600k_max_298x512_2023_2024_KtUniform
+            filenames_lists:
+                - ../lists/prod_1500k_to_1600k_max_298x512_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [512, 298]
+                padding_eps: 0.0
+                crop: [460, 268]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1500k_to_1600k_max_298x512_2023_2024_KtRadial
+            filenames_lists:
+                - ../lists/prod_1500k_to_1600k_max_298x512_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [512, 298]
+                padding_eps: 0.0
+                crop: [460, 268]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [18, 18, 18, 18, 18]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1500k_to_1600k_max_298x512_2023_2024_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1500k_to_1600k_max_298x512_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [512, 298]
+                padding_eps: 0.0
+                crop: [460, 268]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1500k_to_1600k_max_298x512_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1500k_to_1600k_max_298x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 298]
+                padding_eps: 0.0
+                crop: [460, 268]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1500k_to_1600k_max_298x512_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_1500k_to_1600k_max_298x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 298]
+                padding_eps: 0.0
+                crop: [460, 268]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1500k_to_1600k_max_298x512_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_1500k_to_1600k_max_298x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 298]
+                padding_eps: 0.0
+                crop: [460, 268]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [18, 18, 18, 18, 18]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1500k_to_1600k_max_298x512_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1500k_to_1600k_max_298x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 298]
+                padding_eps: 0.0
+                crop: [460, 268]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1600k_to_1700k_max_322x450_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_1600k_to_1700k_max_322x450_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [450, 322]
+                padding_eps: 0.0
+                crop: [405, 305]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1600k_to_1700k_max_322x450_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_1600k_to_1700k_max_322x450_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [450, 322]
+                padding_eps: 0.0
+                crop: [405, 305]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1600k_to_1700k_max_322x450_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_1600k_to_1700k_max_322x450_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [450, 322]
+                padding_eps: 0.0
+                crop: [405, 305]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [19, 19, 19, 19, 19]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_1600k_to_1700k_max_322x450_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_1600k_to_1700k_max_322x450_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [450, 322]
+                padding_eps: 0.0
+                crop: [405, 305]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_200k_to_300k_max_260x520_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_200k_to_300k_max_260x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 260]
+                padding_eps: 0.0
+                crop: [520, 260]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_200k_to_300k_max_260x520_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_200k_to_300k_max_260x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 260]
+                padding_eps: 0.0
+                crop: [520, 260]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_200k_to_300k_max_260x520_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_200k_to_300k_max_260x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 260]
+                padding_eps: 0.0
+                crop: [520, 260]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_200k_to_300k_max_260x520_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_200k_to_300k_max_260x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 260]
+                padding_eps: 0.0
+                crop: [520, 260]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_300k_to_400k_max_128x514_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_300k_to_400k_max_128x514_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [514, 128]
+                padding_eps: 0.0
+                crop: [514, 128]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_300k_to_400k_max_128x514_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_300k_to_400k_max_128x514_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [514, 128]
+                padding_eps: 0.0
+                crop: [514, 128]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_300k_to_400k_max_128x514_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_300k_to_400k_max_128x514_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [514, 128]
+                padding_eps: 0.0
+                crop: [514, 128]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_300k_to_400k_max_128x514_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_300k_to_400k_max_128x514_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [514, 128]
+                padding_eps: 0.0
+                crop: [514, 128]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_400k_to_500k_max_177x516_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_400k_to_500k_max_177x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 177]
+                padding_eps: 0.0
+                crop: [516, 177]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_400k_to_500k_max_177x516_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_400k_to_500k_max_177x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 177]
+                padding_eps: 0.0
+                crop: [516, 177]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_400k_to_500k_max_177x516_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_400k_to_500k_max_177x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 177]
+                padding_eps: 0.0
+                crop: [516, 177]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_400k_to_500k_max_177x516_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_400k_to_500k_max_177x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 177]
+                padding_eps: 0.0
+                crop: [516, 177]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_500k_to_600k_max_163x516_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_500k_to_600k_max_163x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 163]
+                padding_eps: 0.0
+                crop: [516, 163]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_500k_to_600k_max_163x516_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_500k_to_600k_max_163x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 163]
+                padding_eps: 0.0
+                crop: [516, 163]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_500k_to_600k_max_163x516_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_500k_to_600k_max_163x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 163]
+                padding_eps: 0.0
+                crop: [516, 163]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_500k_to_600k_max_163x516_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_500k_to_600k_max_163x516_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [516, 163]
+                padding_eps: 0.0
+                crop: [516, 163]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_600k_to_700k_max_161x520_2023_2024_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_600k_to_700k_max_161x520_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [520, 161]
+                padding_eps: 0.0
+                crop: [520, 161]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_600k_to_700k_max_161x520_2023_2024_KtUniform
+            filenames_lists:
+                - ../lists/prod_600k_to_700k_max_161x520_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [520, 161]
+                padding_eps: 0.0
+                crop: [520, 161]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_600k_to_700k_max_161x520_2023_2024_KtRadial
+            filenames_lists:
+                - ../lists/prod_600k_to_700k_max_161x520_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [520, 161]
+                padding_eps: 0.0
+                crop: [520, 161]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_600k_to_700k_max_161x520_2023_2024_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_600k_to_700k_max_161x520_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [520, 161]
+                padding_eps: 0.0
+                crop: [520, 161]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_600k_to_700k_max_161x520_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_600k_to_700k_max_161x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 161]
+                padding_eps: 0.0
+                crop: [520, 161]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_600k_to_700k_max_161x520_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_600k_to_700k_max_161x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 161]
+                padding_eps: 0.0
+                crop: [520, 161]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_600k_to_700k_max_161x520_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_600k_to_700k_max_161x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 161]
+                padding_eps: 0.0
+                crop: [520, 161]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_600k_to_700k_max_161x520_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_600k_to_700k_max_161x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 161]
+                padding_eps: 0.0
+                crop: [520, 161]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_700k_to_800k_max_187x520_2023_2024_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_700k_to_800k_max_187x520_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [520, 187]
+                padding_eps: 0.0
+                crop: [520, 187]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_700k_to_800k_max_187x520_2023_2024_KtUniform
+            filenames_lists:
+                - ../lists/prod_700k_to_800k_max_187x520_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [520, 187]
+                padding_eps: 0.0
+                crop: [520, 187]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_700k_to_800k_max_187x520_2023_2024_KtRadial
+            filenames_lists:
+                - ../lists/prod_700k_to_800k_max_187x520_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [520, 187]
+                padding_eps: 0.0
+                crop: [520, 187]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_700k_to_800k_max_187x520_2023_2024_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_700k_to_800k_max_187x520_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [520, 187]
+                padding_eps: 0.0
+                crop: [520, 187]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_700k_to_800k_max_187x520_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_700k_to_800k_max_187x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 187]
+                padding_eps: 0.0
+                crop: [520, 187]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_700k_to_800k_max_187x520_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_700k_to_800k_max_187x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 187]
+                padding_eps: 0.0
+                crop: [520, 187]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_700k_to_800k_max_187x520_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_700k_to_800k_max_187x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 187]
+                padding_eps: 0.0
+                crop: [520, 187]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_700k_to_800k_max_187x520_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_700k_to_800k_max_187x520_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [520, 187]
+                padding_eps: 0.0
+                crop: [520, 187]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_800k_to_900k_max_180x450_2023_2024_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_800k_to_900k_max_180x450_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [450, 180]
+                padding_eps: 0.0
+                crop: [450, 180]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_800k_to_900k_max_180x450_2023_2024_KtUniform
+            filenames_lists:
+                - ../lists/prod_800k_to_900k_max_180x450_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [450, 180]
+                padding_eps: 0.0
+                crop: [450, 180]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_800k_to_900k_max_180x450_2023_2024_KtRadial
+            filenames_lists:
+                - ../lists/prod_800k_to_900k_max_180x450_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [450, 180]
+                padding_eps: 0.0
+                crop: [450, 180]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_800k_to_900k_max_180x450_2023_2024_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_800k_to_900k_max_180x450_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [450, 180]
+                padding_eps: 0.0
+                crop: [450, 180]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_800k_to_900k_max_180x450_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_800k_to_900k_max_180x450_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [450, 180]
+                padding_eps: 0.0
+                crop: [450, 180]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_800k_to_900k_max_180x450_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_800k_to_900k_max_180x450_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [450, 180]
+                padding_eps: 0.0
+                crop: [450, 180]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_800k_to_900k_max_180x450_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_800k_to_900k_max_180x450_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [450, 180]
+                padding_eps: 0.0
+                crop: [450, 180]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_800k_to_900k_max_180x450_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_800k_to_900k_max_180x450_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [450, 180]
+                padding_eps: 0.0
+                crop: [450, 180]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_900k_to_1000k_max_205x512_2023_2024_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_900k_to_1000k_max_205x512_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [512, 205]
+                padding_eps: 0.0
+                crop: [512, 205]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_900k_to_1000k_max_205x512_2023_2024_KtUniform
+            filenames_lists:
+                - ../lists/prod_900k_to_1000k_max_205x512_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [512, 205]
+                padding_eps: 0.0
+                crop: [512, 205]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_900k_to_1000k_max_205x512_2023_2024_KtRadial
+            filenames_lists:
+                - ../lists/prod_900k_to_1000k_max_205x512_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [512, 205]
+                padding_eps: 0.0
+                crop: [512, 205]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_900k_to_1000k_max_205x512_2023_2024_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_900k_to_1000k_max_205x512_2023_2024.lst
+            kspace_key: kspace_full
+            transforms:
+                pad: [512, 205]
+                padding_eps: 0.0
+                crop: [512, 205]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_900k_to_1000k_max_205x512_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_900k_to_1000k_max_205x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 205]
+                padding_eps: 0.0
+                crop: [512, 205]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_900k_to_1000k_max_205x512_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_900k_to_1000k_max_205x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 205]
+                padding_eps: 0.0
+                crop: [512, 205]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_900k_to_1000k_max_205x512_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_900k_to_1000k_max_205x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 205]
+                padding_eps: 0.0
+                crop: [512, 205]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_900k_to_1000k_max_205x512_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_900k_to_1000k_max_205x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 205]
+                padding_eps: 0.0
+                crop: [512, 205]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_gt_1700k_max_328x512_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_gt_1700k_max_328x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 328]
+                padding_eps: 0.0
+                crop: [435, 295]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_gt_1700k_max_328x512_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_gt_1700k_max_328x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 328]
+                padding_eps: 0.0
+                crop: [435, 295]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_gt_1700k_max_328x512_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_gt_1700k_max_328x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 328]
+                padding_eps: 0.0
+                crop: [435, 295]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [18, 18, 18, 18, 18]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_gt_1700k_max_328x512_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_gt_1700k_max_328x512_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [512, 328]
+                padding_eps: 0.0
+                crop: [435, 295]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_lte_100k_max_119x390_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/prod_lte_100k_max_119x390_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [390, 119]
+                padding_eps: 0.0
+                crop: [390, 119]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_lte_100k_max_119x390_2025_KtUniform
+            filenames_lists:
+                - ../lists/prod_lte_100k_max_119x390_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [390, 119]
+                padding_eps: 0.0
+                crop: [390, 119]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_lte_100k_max_119x390_2025_KtRadial
+            filenames_lists:
+                - ../lists/prod_lte_100k_max_119x390_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [390, 119]
+                padding_eps: 0.0
+                crop: [390, 119]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: prod_lte_100k_max_119x390_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/prod_lte_100k_max_119x390_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [390, 119]
+                padding_eps: 0.0
+                crop: [390, 119]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: shape_50_or_35_max_159x384_2025_CartesianEquispaced
+            filenames_lists:
+                - ../lists/shape_50_or_35_max_159x384_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [384, 159]
+                padding_eps: 0.0
+                crop: [26, 384, 159]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: shape_50_or_35_max_159x384_2025_KtUniform
+            filenames_lists:
+                - ../lists/shape_50_or_35_max_159x384_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [384, 159]
+                padding_eps: 0.0
+                crop: [26, 384, 159]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtUniform
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: shape_50_or_35_max_159x384_2025_KtRadial
+            filenames_lists:
+                - ../lists/shape_50_or_35_max_159x384_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [384, 159]
+                padding_eps: 0.0
+                crop: [26, 384, 159]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtRadial
+                    accelerations: [4, 8, 12, 14]
+                    center_fractions: [20, 20, 20, 20, 20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+
+
+
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: shape_50_or_35_max_159x384_2025_KtGaussian1D
+            filenames_lists:
+                - ../lists/shape_50_or_35_max_159x384_2025.lst
+            kspace_key: kspace
+            transforms:
+                pad: [384, 159]
+                padding_eps: 0.0
+                crop: [26, 384, 159]
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0.5
+                random_reverse_probability: 0.5
+                masking:
+                    name: KtGaussian1D
+                    accelerations: [4, 6, 8, 10, 12]
+                    center_fractions: [20, 18, 14, 12, 10]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+    optimizer: Adam
+    lr: 0.002
+    weight_decay: 0
+    batch_size: 1
+    lr_step_size: 50000
+    lr_gamma: 0.95
+    lr_warmup_iter: 4000
+    num_iterations: 2000000
+    validation_steps: 1999999
+    gradient_steps: 1
+    gradient_clipping: 100.0
+    gradient_debug: false
+    loss:
+        crop: null
+        losses:
+            -
+                function: l1_loss
+                multiplier: 1
+            -
+                function: ssim_loss
+                multiplier: 1
+            -
+                function: ssim_3d_loss
+                multiplier: 1
+            -
+                function: kspace_nmae_loss
+                multiplier: 1
+    checkpointer:
+        checkpoint_steps: 1000
+validation:
+    datasets:
+        -
+            name: CMRxRecon2025
+            kspace_context: time
+            text_description: shape_50_or_35_max_159x384_2025_val
+            filenames_lists:
+                - ../lists/shape_50_or_35_max_159x384_2025.lst
+            transforms:
+                padding_eps: 0.0
+                estimate_sensitivity_maps: true
+                scaling_key: masked_kspace
+                image_center_crop: false
+                random_flip_probability: 0
+                random_reverse_probability: 0
+                masking:
+                    name: CartesianEquispaced
+                    accelerations: [4]
+                    center_fractions: [20]
+                scale_percentile: 0.995
+                use_seed: false
+                delete_kspace: false
+            kspace_key: kspace
+    batch_size: 1
+    metrics:
+        - fastmri_ssim
+        - fastmri_psnr
+    crop: null
+model:
+    model_name: vsharp.vsharp.VSharpNet3D
+    num_steps: 10
+    num_steps_dc_gd: 6
+    image_init: INPUT_IMAGE
+    no_parameter_sharing: true
+    auxiliary_steps: -1
+    unet_num_filters: 32
+    unet_num_pool_layers: 4
+    initializer_channels:
+        - 32
+        - 32
+        - 64
+        - 64
+    initializer_dilations:
+        - 1
+        - 1
+        - 2
+        - 4
+    initializer_multiscale: 1
+additional_models:
+    sensitivity_model:
+        model_name: unet.unet_2d.UnetModel2d
+        in_channels: 2
+        out_channels: 2
+        num_filters: 32
+        num_pool_layers: 4
+        dropout_probability: 0
+    auxiliary_kspace_model:
+        model_name: varnet.varnet.EndToEndVarNet3D
+        num_layers: 6
+        regularizer_num_filters: 16
+        regularizer_num_pull_layers: 4
+logging:
+    tensorboard:
+        num_images: 4
+# inference:
+#     batch_size: 1
+#     dataset:
+#         name: CMRxRecon2024
+#         kspace_key: kus
+#         compute_mask: true
+#         kspace_context: time
+#         acs_type: auto
+#         transforms:
+#             cropping:
+#                 crop: null
+#             sensitivity_map_estimation:
+#                 estimate_sensitivity_maps: true
+#             normalization:
+#                 scaling_key: masked_kspace
+#                 scale_percentile: 0.995
+#             masking: null
+#             use_seed: true
+#         text_description: inference-uni
+#     crop: null
