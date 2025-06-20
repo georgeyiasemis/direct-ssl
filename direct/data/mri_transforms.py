@@ -1311,10 +1311,25 @@ class AddBooleanKeysModule(DirectModule):
         return sample
 
 
-class CompressCoilModule(DirectModule):
-    """Compresses k-space coils using SVD."""
+class CompressCoilType(DirectEnum):
+    """Type of coil compression to be used in :class:`CompressCoilModule`."""
 
-    def __init__(self, kspace_key: KspaceKey, num_coils: int) -> None:
+    SVD = "svd"
+    SENSE = "sense"
+    RSS = "rss"
+
+
+class CompressCoilModule(DirectModule):
+    """Compresses k-space coils using SVD or SENSE."""
+
+    def __init__(
+        self,
+        kspace_key: KspaceKey,
+        num_coils: int,
+        compress_coil_type: CompressCoilType = CompressCoilType.SVD,
+        forward_operator: Optional[Callable] = None,
+        backward_operator: Optional[Callable] = None,
+    ) -> None:
         """Inits :class:`CompressCoilModule`.
 
         Parameters
@@ -1323,29 +1338,43 @@ class CompressCoilModule(DirectModule):
             K-space key.
         num_coils : int
             Number of coils to compress.
+        compress_coil_type : CompressCoilType
+            Type of coil compression to be used. Can be CompressCoilType.SENSE or CompressCoilType.SVD.
+            If SENSE is used, this will create a single coil output using the conjugate sensitivity map sum.
+            If SVD is used, this will compress the k-space using Singular Value Decomposition (SVD).
+            Default: CompressCoilType.SVD.
+        forward_operator : Callable, optional
+            The forward operator, e.g. some form of FFT (centered or uncentered).
+            Required for SENSE compression. Default: None.
+        backward_operator : Callable, optional
+            The backward operator, e.g. some form of inverse FFT (centered or uncentered).
+            Required for SENSE compression. Default: None.
         """
         super().__init__()
         self.kspace_key = kspace_key
-        self.num_coils = num_coils
+        if compress_coil_type == CompressCoilType.SENSE or compress_coil_type == CompressCoilType.RSS:
+            self.num_coils = 1
+            if backward_operator is None:
+                raise ValueError("Backward operator must be provided for SENSE coil compression.")
+        elif compress_coil_type == CompressCoilType.SVD:
+            self.num_coils = num_coils
+        self.compress_coil_type = compress_coil_type
+        self.forward_operator = forward_operator
+        self.backward_operator = backward_operator
 
-    def forward(self, sample: dict[str, Any]) -> dict[str, Any]:
-        """Performs coil compression to input k-space.
+    def svd_compress(self, k_space: torch.Tensor) -> torch.Tensor:
+        """Compresses k-space using Singular Value Decomposition (SVD).
 
         Parameters
         ----------
-        sample : dict[str, Any]
-            Dict sample containing key `kspace_key`. Assumes coil dimension is first axis.
+        k_space : torch.Tensor
+            K-space data of shape (batch, coil, [slice/time], height, width, complex=2).
 
         Returns
         -------
-        sample : dict[str, Any]
-            Dict sample with `kspace_key` compressed to num_coils.
+        torch.Tensor
+            Compressed k-space data of shape (batch, num_coils, [slice/time], height, width, complex=2).
         """
-        k_space = sample[self.kspace_key].clone()  # shape (batch, coil, [slice/time], height, width, complex=2)
-
-        if k_space.shape[1] <= self.num_coils:
-            return sample
-
         ndim = k_space.ndim
 
         k_space = torch.view_as_complex(k_space)
@@ -1378,6 +1407,95 @@ class CompressCoilModule(DirectModule):
             ).permute(0, 2, 1, 3, 4)
 
         compressed_k_space = torch.view_as_real(compressed_k_space)
+
+        return compressed_k_space
+
+    def sense_compress(self, k_space: torch.Tensor, sensitivity_map: torch.Tensor) -> torch.Tensor:
+        """Applies SENSE compression to the k-space data.
+
+        Parameters
+        ----------
+        k_space : torch.Tensor
+            K-space data of shape (batch, coil, [slice/time], height, width, complex=2).
+        sensitivity_map : torch.Tensor
+            Sensitivity map of shape (batch, coil, height, width, complex=2).
+
+        Returns
+        -------
+        torch.Tensor
+            Compressed k-space data of shape (batch, 1, [slice/time], height, width, complex=2).
+        """
+        # Apply SENSE compression
+        image = self.backward_operator(
+            k_space, dim=self.spatial_dims.TWO_D if k_space.ndim == 5 else self.spatial_dims.THREE_D
+        )
+        k_space = self.forward_operator(
+            T.complex_multiplication(T.conjugate(sensitivity_map), image).sum(self.coil_dim).unsqueeze(self.coil_dim),
+            dim=self.spatial_dims.TWO_D if k_space.ndim == 5 else self.spatial_dims.THREE_D,
+        )  # shape (batch, 1, [slice/time], height, width, complex=2)
+        return k_space
+
+    def rss_compress(self, k_space: torch.Tensor) -> torch.Tensor:
+        """Applies RSS compression to the k-space data.
+
+        Parameters
+        ----------
+        k_space : torch.Tensor
+            K-space data of shape (batch, coil, [slice/time], height, width, complex=2).
+
+        Returns
+        -------
+        torch.Tensor
+            Compressed k-space data of shape (batch, 1, [slice/time], height, width, complex=2).
+        """
+        # Apply RSS compression
+        image = self.backward_operator(
+            k_space, dim=self.spatial_dims.TWO_D if k_space.ndim == 5 else self.spatial_dims.THREE_D
+        )
+        # shape (batch, 1, [slice/time], height, width)
+        image = T.root_sum_of_squares(image, dim=self.coil_dim).unsqueeze(self.coil_dim)
+        print(f"Image shape after RSS compression: {image.shape}")
+        image = torch.stack([image, torch.zeros_like(image).to(image.device)], dim=-1)  # Add zero imaginary part
+        print(f"Image shape after adding zero imaginary part: {image.shape}")
+
+        # shape (batch, 1, [slice/time], height, width, complex=2)
+        k_space = self.forward_operator(
+            image, dim=self.spatial_dims.TWO_D if k_space.ndim == 5 else self.spatial_dims.THREE_D
+        )
+        print(f"Compressed k-space shape: {k_space.shape}")
+        return k_space
+
+    def forward(self, sample: dict[str, Any]) -> dict[str, Any]:
+        """Performs coil compression to input k-space.
+
+        Parameters
+        ----------
+        sample : dict[str, Any]
+            Dict sample containing key `kspace_key`. Assumes coil dimension is first axis.
+
+        Returns
+        -------
+        sample : dict[str, Any]
+            Dict sample with `kspace_key` compressed to num_coils.
+        """
+        k_space = sample[self.kspace_key].clone()  # shape (batch, coil, [slice/time], height, width, complex=2)
+
+        if k_space.shape[1] <= self.num_coils:
+            return sample
+
+        if self.compress_coil_type == CompressCoilType.SENSE:
+            if "sensitivity_map" not in sample:
+                raise ItemNotFoundException(
+                    "sensitivity_map",
+                    "Sensitivity map is required for SENSE coil compression.",
+                )
+            sensitivity_map = sample["sensitivity_map"]
+            compressed_k_space = self.sense_compress(k_space, sensitivity_map)
+        elif self.compress_coil_type == CompressCoilType.SVD:
+            compressed_k_space = self.svd_compress(k_space)
+        else:
+            compressed_k_space = self.rss_compress(k_space)
+
         sample[self.kspace_key] = compressed_k_space  # shape (batch, new coil, [slice/time], height, width, complex=2)
 
         return sample
@@ -2127,6 +2245,7 @@ def build_supervised_mri_transforms(
     delete_kspace: bool = True,
     image_recon_type: ReconstructionType = ReconstructionType.RSS,
     compress_coils: Optional[int] = None,
+    compress_coil_type: CompressCoilType = CompressCoilType.SVD,
     pad_coils: Optional[int] = None,
     scaling_key: TransformKey = TransformKey.MASKED_KSPACE,
     scale_percentile: Optional[float] = 0.99,
@@ -2235,6 +2354,9 @@ def build_supervised_mri_transforms(
     compress_coils : int, optional
         Number of coils to compress input k-space. It is not recommended to be used in combination with `pad_coils`.
         Default: None.
+    compress_coil_type : CompressCoilType
+        Type of compression to be used. Can be CompressCoilType.SVD or CompressCoilType.SENSE.
+        Will be ignored if `compress_coils` is None. Default: CompressCoilType.SVD.
     pad_coils : int
         Number of coils to pad data to.
     scaling_key : TransformKey
@@ -2250,6 +2372,8 @@ def build_supervised_mri_transforms(
     DirectTransform
         An MRI transformation object.
     """
+    logger = logging.getLogger(build_supervised_mri_transforms.__name__)
+
     mri_transforms: list[Callable] = [ToTensor()]
     if random_context_drop_probability > 0.0:
         mri_transforms += [
@@ -2334,13 +2458,39 @@ def build_supervised_mri_transforms(
             ),
         ]
     if compress_coils:
-        mri_transforms += [CompressCoil(num_coils=compress_coils, kspace_key=KspaceKey.KSPACE)]
+        if compress_coil_type == CompressCoilType.SENSE and estimate_sensitivity_maps:
+            mri_transforms += [
+                EstimateSensitivityMap(
+                    kspace_key=KspaceKey.KSPACE,
+                    backward_operator=backward_operator,
+                    type_of_map=sensitivity_maps_type,
+                    gaussian_sigma=sensitivity_maps_gaussian,
+                    espirit_threshold=sensitivity_maps_espirit_threshold,
+                    espirit_kernel_size=sensitivity_maps_espirit_kernel_size,
+                    espirit_crop=sensitivity_maps_espirit_crop,
+                    espirit_max_iters=sensitivity_maps_espirit_max_iters,
+                )
+            ]
+
+
+        mri_transforms += [
+            CompressCoil(
+                num_coils=compress_coils,
+                kspace_key=KspaceKey.KSPACE,
+                compress_coil_type=compress_coil_type,
+                forward_operator=forward_operator,
+                backward_operator=backward_operator,
+            )
+        ]
     if pad_coils:
         mri_transforms += [PadCoilDimension(pad_coils=pad_coils, key=KspaceKey.KSPACE)]
 
     if estimate_body_coil_image and mask_func is not None:
         mri_transforms.append(EstimateBodyCoilImage(mask_func, backward_operator=backward_operator, use_seed=use_seed))
 
+    if compress_coils and (compress_coil_type == CompressCoilType.SENSE or compress_coil_type == CompressCoilType.SENSE_UNIT) and
+        logger.warning("Compressing coils with SENSE will set sensitivity maps to unit maps.")
+        sensitivity_maps_type = SensitivityMapType.UNIT
     if estimate_sensitivity_maps:
         mri_transforms += [
             EstimateSensitivityMap(
@@ -2436,6 +2586,7 @@ def build_mri_transforms(
     delete_kspace: bool = True,
     image_recon_type: ReconstructionType = ReconstructionType.RSS,
     compress_coils: Optional[int] = None,
+    compress_coil_type: CompressCoilType = CompressCoilType.SVD,
     pad_coils: Optional[int] = None,
     scaling_key: TransformKey = TransformKey.MASKED_KSPACE,
     scale_percentile: Optional[float] = 0.99,
@@ -2552,6 +2703,9 @@ def build_mri_transforms(
     compress_coils : int, optional
         Number of coils to compress input k-space. It is not recommended to be used in combination with `pad_coils`.
         Default: None.
+    compress_coil_type : CompressCoilType
+        Type of compression to be used. Can be CompressCoilType.SVD or CompressCoilType.SENSE.
+        Will be ignored if `compress_coils` is None. Default: CompressCoilType.SVD.
     pad_coils : int
         Number of coils to pad data to.
     scaling_key : TransformKey
@@ -2605,6 +2759,9 @@ def build_mri_transforms(
             "This is not recommended."
         )
 
+    if compress_coils and compress_coil_type == CompressCoilType.SENSE:
+        logger.info("Requesting SENSE coil compression. ")
+
     mri_transforms = build_supervised_mri_transforms(
         forward_operator=forward_operator,
         backward_operator=backward_operator,
@@ -2638,6 +2795,7 @@ def build_mri_transforms(
         delete_kspace=delete_kspace if transforms_type == TransformsType.SUPERVISED else False,
         image_recon_type=image_recon_type,
         compress_coils=compress_coils,
+        compress_coil_type=compress_coil_type,
         pad_coils=pad_coils,
         scaling_key=scaling_key,
         scale_percentile=scale_percentile,
