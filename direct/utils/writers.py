@@ -3,6 +3,7 @@
 
 import logging
 import pathlib
+import re
 from typing import Callable, DefaultDict, Dict, Optional, Union
 
 import h5py  # type: ignore
@@ -10,6 +11,7 @@ import numpy as np
 import scipy
 
 from direct.cmrxrecon.run4ranking import run4Ranking
+from direct.cmrxrecon2025.run4ranking import run4Ranking_2025
 
 logger = logging.getLogger(__name__)
 
@@ -44,46 +46,75 @@ def write_output_to_mat(
     """
 
     def set_type(s):
-        if "aorta" in s:
-            return "Aorta"
+        s = s.lower()
         if "cine" in s:
             return "Cine"
+        if "t1w" in s:
+            return "T1w"
+        if "t2w" in s:
+            return "T2w"
         if "map" in s:
             return "Mapping"
-        if "tagging" in s:
-            return "Tagging"
         if "blood" in s:
             return "BlackBlood"
         if "flow" in s:
             return "Flow2d"
+        if "t1rho" in s:
+            return "T1rho"
+        if "perfusion" in s:
+            return "Perfusion"
+        if "lge" in s:
+            return "LGE"
         raise ValueError(f"Unknown type for {s}.")
+
+    pattern = re.compile(r"^(Center\d+)_(.+?)_(P\d+)_([A-Za-z0-9_]+\.mat)$")
+
+    def match_name(filename, task):
+        match = pattern.match(filename)
+        if match:
+            center, machine, patient, file = match.groups()
+            typ = set_type(filename)
+            path = (
+                pathlib.Path("MultiCoil")
+                / typ
+                / "ValidationSet"
+                / f"UnderSample_{task}"
+                / center
+                / machine
+                / patient
+                / file
+            )
+
+        else:
+            raise ValueError(f"Filename did not match pattern: {filename}")
+        return path
 
     if create_dirs_if_needed:
         # Create output directory
         output_directory.mkdir(exist_ok=True, parents=True)
 
     for idx, (volume, _, filename) in enumerate(output):
-        # Volume is (nz, nc, nt, nx, ny, 2)
-        if isinstance(filename, pathlib.PosixPath):
-            filename = filename.name
+        name = pathlib.Path(filename).name
+        base_save_name = match_name(name, task)
 
-        patient_name = str(filename)[:4]
-        file_name = str(filename)[5:]
-
-        save_path = (
-            output_directory / "MultiCoil" / set_type(file_name) / "ValidationSet" / task / patient_name / file_name
-        )
-
+        save_path = output_directory / base_save_name
         save_path.parent.mkdir(exist_ok=True, parents=True)
-        logger.info(f"({idx + 1}/{len(output)}): Writing {save_path}...")
+
+        logger.info(f"({idx + 1}/{len(output)}): Processing {save_path} with original shape {tuple(volume.shape)}...")
 
         reconstruction = volume[:, 0].cpu().numpy()
         reconstruction = reconstruction.transpose(2, 3, 0, 1)
 
-        if "blood" in file_name:
+        if "blood" in name.lower():
             reconstruction = reconstruction[..., 6]
+            reconstruction = np.expand_dims(reconstruction, axis=-1)
+        if "t1w" in name or "t2w" in name.lower():
+            reconstruction = reconstruction[..., 4]
+            reconstruction = np.expand_dims(reconstruction, axis=-1)
 
-        img4ranking = run4Ranking(reconstruction, file_name)
+        img4ranking = run4Ranking_2025(reconstruction, name)
+        img4ranking = img4ranking.squeeze()
+        logger.info(f"({idx + 1}/{len(output)}): Writing {save_path} with shape {tuple(img4ranking.shape)}...")
 
         scipy.io.savemat(save_path, {output_key: img4ranking})
 
