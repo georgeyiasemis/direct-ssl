@@ -1403,8 +1403,12 @@ class CMRxRecon2025Dataset(Dataset):
                 if not filename.exists():
                     raise OSError(f"{filename} does not exist.")
                 kspace_shape = h5py.File(filename, "r")[self.kspace_key].shape
+
+                # BlackBlood, T1w and T2w data is of shape(nz, nc, ny, nx)
                 if any(name in str(filename) for name in ["T1w", "T2w"]):
-                    kspace_shape = (9,) + kspace_shape  # BlackBlood, T1w and T2w data is of shape(nz, nc, ny, nx)
+                    if len(kspace_shape) == 3:  # Some T1w and T2w data is of shape(nc, ny, nx)
+                        kspace_shape = (1,) + kspace_shape
+                    kspace_shape = (9,) + kspace_shape
                 elif "blood" in str(filename):
                     kspace_shape = (12,) + kspace_shape
                 elif any(tp in str(filename) for tp in ["sax", "2ch", "3ch", "4ch"]) and "Center007_Siemens" in str(
@@ -1495,7 +1499,9 @@ class CMRxRecon2025Dataset(Dataset):
         kspace_data = data[key]
 
         if any(name in str(filename) for name in ["T1w", "T2w"]):  # T1w and T2w data are of shape(nz, nc, ny, nx)
-            kspace_data = np.stack([kspace_data] * 9)
+            kspace_data = np.stack([kspace_data] * 9, axis=0)
+            if len(kspace_data.shape) == 4:  # Some T1w and T2w data is of shape(nc, ny, nx)
+                kspace_data = np.expand_dims(kspace_data, axis=1)
         elif "blood" in str(filename):
             kspace_data = np.stack([kspace_data] * 12)  # BlackBlood data is of shape(nz, nc, ny, nx)
         elif any(tp in str(filename) for tp in ["sax", "2ch", "3ch", "4ch"]) and "Center007_Siemens" in str(filename):
@@ -1551,29 +1557,28 @@ class CMRxRecon2025Dataset(Dataset):
             if self.kspace_context:  # slice or time dim
                 n = shape[-3]
 
-            if self.compute_mask:
-                sampling_mask = np.abs(kspace).sum(0) != 0
+            sampling_mask = np.abs(kspace).sum(0) != 0
 
-                acs_mask = np.zeros(sampling_mask.shape, dtype=bool)
+            acs_mask = np.zeros(sampling_mask.shape, dtype=bool)
 
-                if self.acs_type == "auto":
-                    if "radial" in sample["filename"].lower():
-                        acs_mask[
-                            ...,
-                            nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
-                            ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
-                        ] = True
-                    else:
-                        acs_mask[..., ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2] = True
+            if self.acs_type == "auto":
+                if "radial" in sample["filename"].lower():
+                    acs_mask[
+                        ...,
+                        nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
+                        ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
+                    ] = True
                 else:
-                    if self.acs_type == "square":
-                        acs_mask[
-                            ...,
-                            nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
-                            ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
-                        ] = True
-                    else:
-                        acs_mask[..., ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2] = True
+                    acs_mask[..., ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2] = True
+            else:
+                if self.acs_type == "square":
+                    acs_mask[
+                        ...,
+                        nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
+                        ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
+                    ] = True
+                else:
+                    acs_mask[..., ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2] = True
 
             # Add coil (first) and complex (last) dimensions
             sample["sampling_mask"] = sampling_mask[np.newaxis, ..., np.newaxis]
@@ -1585,34 +1590,12 @@ class CMRxRecon2025Dataset(Dataset):
             # Add context dimension in reconstruction size without any crop
             sample["reconstruction_size"] = (shape[1],) + sample["reconstruction_size"]
 
-        if self.compute_mask:
-            if self.acs_type == "auto":
-                if not "radial" in sample["filename"].lower():
-                    sample["calibration_kspace"] = sample["kspace"][
-                        ...,
-                        ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
-                    ]
-                else:
-                    sample["calibration_kspace"] = sample["kspace"][
-                        ...,
-                        nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
-                        ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
-                    ]
-
-            elif self.acs_type == "radial":
-                sample["calibration_kspace"] = sample["kspace"][
-                    ...,
-                    nx // 2 - self.NUM_ACS_LINES // 2 : nx // 2 + self.NUM_ACS_LINES // 2,
-                    ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
-                ]
-            else:
-                sample["calibration_kspace"] = sample["kspace"][
-                    ...,
-                    ny // 2 - self.NUM_ACS_LINES // 2 : ny // 2 + self.NUM_ACS_LINES // 2,
-                ]
-
-        if self.transform:
-            sample = self.transform(sample)
+        try:
+            if self.transform:
+                sample = self.transform(sample)
+        except Exception as exc:
+            self.logger.error("Error in transform for filename %s: %s", sample["filename"], exc)
+            raise exc
 
         return sample
 
