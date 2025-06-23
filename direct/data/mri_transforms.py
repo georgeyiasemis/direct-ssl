@@ -1454,15 +1454,11 @@ class CompressCoilModule(DirectModule):
         )
         # shape (batch, 1, [slice/time], height, width)
         image = T.root_sum_of_squares(image, dim=self.coil_dim).unsqueeze(self.coil_dim)
-        print(f"Image shape after RSS compression: {image.shape}")
         image = torch.stack([image, torch.zeros_like(image).to(image.device)], dim=-1)  # Add zero imaginary part
-        print(f"Image shape after adding zero imaginary part: {image.shape}")
-
         # shape (batch, 1, [slice/time], height, width, complex=2)
         k_space = self.forward_operator(
             image, dim=self.spatial_dims.TWO_D if k_space.ndim == 5 else self.spatial_dims.THREE_D
         )
-        print(f"Compressed k-space shape: {k_space.shape}")
         return k_space
 
     def forward(self, sample: dict[str, Any]) -> dict[str, Any]:
@@ -1669,6 +1665,8 @@ class ComputeScalingFactorModule(DirectModule):
         self.percentile = percentile
         self.scaling_factor_key = scaling_factor_key
 
+        self.logger = logging.getLogger(self.__class__.__name__)
+
     def forward(self, sample: dict[str, Any]) -> dict[str, Any]:
         """Forward pass of :class:`ComputeScalingFactorModule`.
 
@@ -1696,11 +1694,27 @@ class ComputeScalingFactorModule(DirectModule):
                     # Used in case the k-space is padded (e.g. for batches)
                     non_padded_coil_data = data[_][data[_].sum(dim=tuple(range(1, data[_].ndim))).bool()]
                     tview = -1.0 * T.modulus(non_padded_coil_data).view(-1)
-                    s, _ = torch.kthvalue(tview, int((1 - self.percentile) * tview.size()[0]) + 1)
-                    scaling_factor += [-1.0 * s]
+                    if torch.allclose(tview, torch.zeros_like(tview)):
+                        # If all values are zero, we cannot compute the percentile, so we use 1.0
+                        scaling_factor += [1.0]
+                        self.logger.warning(
+                            f"All values in {sample['filename'][_]}, slice_no: {sample['slice_no'][_]}  "
+                            f"are zero, setting scaling factor to 1.0."
+                        )
+                    else:
+                        s, _ = torch.kthvalue(tview, int((1 - self.percentile) * tview.size()[0]) + 1)
+                        scaling_factor += [-1.0 * s]
                 scaling_factor = torch.tensor(scaling_factor, dtype=data.dtype, device=data.device)
             else:
                 scaling_factor = T.modulus(data).amax(dim=list(range(data.ndim))[1:-1])
+                for _ in range(data.size(0)):
+                    if scaling_factor[_] == 0.0:
+                        # If all values are zero, we canno[t compute the maximum, so we use 1.0
+                        scaling_factor[_] = 1.0
+                        self.logger.warning(
+                            f"All values in {sample['filename'][_]}, slice_no: {sample['slice_no'][_]} "
+                            f"are zero, setting scaling factor to 1.0."
+                        )
         sample[self.scaling_factor_key] = scaling_factor
         return sample
 
@@ -2472,7 +2486,6 @@ def build_supervised_mri_transforms(
                 )
             ]
 
-
         mri_transforms += [
             CompressCoil(
                 num_coils=compress_coils,
@@ -2488,8 +2501,12 @@ def build_supervised_mri_transforms(
     if estimate_body_coil_image and mask_func is not None:
         mri_transforms.append(EstimateBodyCoilImage(mask_func, backward_operator=backward_operator, use_seed=use_seed))
 
-    if compress_coils and (compress_coil_type == CompressCoilType.SENSE or compress_coil_type == CompressCoilType.SENSE_UNIT) and
-        logger.warning("Compressing coils with SENSE will set sensitivity maps to unit maps.")
+    if (
+        compress_coils
+        and (compress_coil_type == CompressCoilType.SENSE or compress_coil_type == CompressCoilType.RSS)
+        and estimate_sensitivity_maps
+    ):
+        logger.warning("Compressing coils with SENSE or RSS will set sensitivity maps to unit maps.")
         sensitivity_maps_type = SensitivityMapType.UNIT
     if estimate_sensitivity_maps:
         mri_transforms += [
