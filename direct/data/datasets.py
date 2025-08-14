@@ -1411,8 +1411,9 @@ class CMRxRecon2025Dataset(Dataset):
                     kspace_shape = (9,) + kspace_shape
                 elif "blood" in str(filename):
                     kspace_shape = (12,) + kspace_shape
-                elif any(tp in str(filename) for tp in ["sax", "2ch", "3ch", "4ch"]) and "Center007_Siemens" in str(
-                    filename
+                elif any(tp in str(filename) for tp in ["sax", "2ch", "3ch", "4ch"]) and (
+                    ("Center007" in str(filename) and "Siemens" in str(filename))
+                    or ("Center010" in str(filename) and "UIH_30T_umr790" in str(filename))
                 ):
                     if len(kspace_shape) == 4:
                         kspace_shape = (kspace_shape[0],) + (1,) + kspace_shape[1:]
@@ -1476,7 +1477,7 @@ class CMRxRecon2025Dataset(Dataset):
         filename: PathOrString,
         slice_no: int,
         key: str,
-    ) -> tuple[np.ndarray, Any]:
+    ) -> tuple[np.ndarray, tuple[int, ...]]:
         """Get slice data from the mat file.
 
         This function will return the slice data from the mat file.
@@ -1492,36 +1493,55 @@ class CMRxRecon2025Dataset(Dataset):
 
         Returns
         -------
-        tuple[np.ndarray, Any]
-            The retrieved data and the extra data.
+        tuple[np.ndarray, tuple[int, ...]]
+            The retrieved data and the original shape of the data.
         """
         data = h5py.File(filename, "r")
         kspace_data = data[key]
+        original_shape = tuple(kspace_data.shape)
 
         if any(name in str(filename) for name in ["T1w", "T2w"]):  # T1w and T2w data are of shape(nz, nc, ny, nx)
             kspace_data = np.stack([kspace_data] * 9, axis=0)
             if len(kspace_data.shape) == 4:  # Some T1w and T2w data is of shape(nc, ny, nx)
                 kspace_data = np.expand_dims(kspace_data, axis=1)
+
         elif "blood" in str(filename):
             kspace_data = np.stack([kspace_data] * 12)  # BlackBlood data is of shape(nz, nc, ny, nx)
-        elif any(tp in str(filename) for tp in ["sax", "2ch", "3ch", "4ch"]) and "Center007_Siemens" in str(filename):
+
+        elif any(tp in str(filename) for tp in ["sax", "2ch", "3ch", "4ch"]) and (
+            ("Center007" in str(filename) and "Siemens" in str(filename))
+            or ("Center010" in str(filename) and "UIH_30T_umr790" in str(filename))
+        ):
             if len(kspace_data.shape) == 4:
                 # Insert a singleton dimension at position 1
                 kspace_data = np.expand_dims(kspace_data, axis=1)
 
-        shape = kspace_data.shape
+        try:
+            shape = kspace_data.shape
 
-        if self.kspace_context is None:
-            inds = {(i): (k, l) for i, (k, l) in enumerate([(k, l) for k in range(shape[0]) for l in range(shape[1])])}
-            ind = inds[slice_no]
-            curr_data = np.array(kspace_data[ind[0]][ind[1]])
-        elif self.kspace_context == "slice":
-            curr_data = np.array(kspace_data[slice_no])
-        else:
-            curr_data = np.array(kspace_data[:, slice_no])
+            if self.kspace_context is None:
+                inds = {
+                    (i): (k, l) for i, (k, l) in enumerate([(k, l) for k in range(shape[0]) for l in range(shape[1])])
+                }
+                ind = inds[slice_no]
+                curr_data = np.array(kspace_data[ind[0]][ind[1]])
+            elif self.kspace_context == "slice":
+                curr_data = np.array(kspace_data[slice_no])
+            else:
+                curr_data = np.array(kspace_data[:, slice_no])
+
+        except Exception as exc:
+            self.logger.error(
+                "Error while loading slice %s from file %s with key %s: %s",
+                slice_no,
+                filename,
+                key,
+                exc,
+            )
+            raise exc
 
         data.close()
-        return curr_data
+        return curr_data, original_shape
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         """Get a sample from the dataset.
@@ -1539,7 +1559,7 @@ class CMRxRecon2025Dataset(Dataset):
         filename, slice_no = self.data[idx]
         filename = pathlib.Path(filename)
 
-        kspace = self.get_slice_data(filename, slice_no, key=self.kspace_key)
+        kspace, original_shape = self.get_slice_data(filename, slice_no, key=self.kspace_key)
 
         kspace = kspace["real"] + 1j * kspace["imag"]
         kspace = np.swapaxes(kspace, -1, -2)
@@ -1547,6 +1567,10 @@ class CMRxRecon2025Dataset(Dataset):
         if self.kspace_context:
             # If context put coil dim first
             kspace = np.swapaxes(kspace, 0, 1)
+            if not kspace.ndim == 4:
+                raise ValueError(
+                    f"K-space should be 4D with context but got shape={kspace.shape} for {filename} and slice {slice_no}."
+                )
 
         shape = kspace.shape
 
@@ -1554,9 +1578,6 @@ class CMRxRecon2025Dataset(Dataset):
 
         nx, ny = shape[-2:]
         if self.compute_mask:
-            if self.kspace_context:  # slice or time dim
-                n = shape[-3]
-
             sampling_mask = np.abs(kspace).sum(0) != 0
 
             acs_mask = np.zeros(sampling_mask.shape, dtype=bool)
@@ -1590,12 +1611,10 @@ class CMRxRecon2025Dataset(Dataset):
             # Add context dimension in reconstruction size without any crop
             sample["reconstruction_size"] = (shape[1],) + sample["reconstruction_size"]
 
-        try:
-            if self.transform:
-                sample = self.transform(sample)
-        except Exception as exc:
-            self.logger.error("Error in transform for filename %s: %s", sample["filename"], exc)
-            raise exc
+        if self.transform:
+            sample = self.transform(sample)
+
+        sample["original_shape"] = (*original_shape[:-3], *original_shape[-2:])
 
         return sample
 
