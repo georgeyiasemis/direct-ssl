@@ -10,8 +10,8 @@ import h5py  # type: ignore
 import numpy as np
 import scipy
 
-from direct.cmrxrecon.run4ranking import run4Ranking
 from direct.cmrxrecon2025.run4ranking import run4Ranking_2025
+from direct.cmrxrecon.run4ranking import run4Ranking
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +23,7 @@ def write_output_to_mat(
     volume_processing_func: Optional[Callable] = None,
     output_key: str = "reconstruction",
     create_dirs_if_needed: bool = True,
+    set_name: str = "ValidationSet",
 ) -> None:
     """Write dictionary with keys filenames and values torch tensors to h5 files.
 
@@ -75,14 +76,9 @@ def write_output_to_mat(
             center, machine, patient, file = match.groups()
             typ = set_type(filename)
             path = (
-                pathlib.Path("MultiCoil")
-                / typ
-                / "ValidationSet"
-                / f"UnderSample_{task}"
-                / center
-                / machine
-                / patient
-                / file
+                pathlib.Path("MultiCoil") / typ / set_name / f"UnderSample_{task}"
+                if set_name == "ValidationSet"
+                else task / center / machine / patient / file
             )
 
         else:
@@ -93,28 +89,46 @@ def write_output_to_mat(
         # Create output directory
         output_directory.mkdir(exist_ok=True, parents=True)
 
-    for idx, (volume, _, filename) in enumerate(output):
+    assert set_name in ["ValidationSet", "TestSet"], "Set name must be ValidationSet or TestSet"
+    assert task in ["TaskR1", "TaskR2", "TaskS1", "TaskS2"], "Task must be TaskR1 or TaskR2 or TaskS1 or TaskS2"
+
+    logger.info(f"Writing to {output_directory} with set name {set_name} and task {task}")
+
+    for idx, (volume, _, filename, original_shape) in enumerate(output):
         name = pathlib.Path(filename).name
+
+        tp = set_type(name)
+
         base_save_name = match_name(name, task)
 
         save_path = output_directory / base_save_name
         save_path.parent.mkdir(exist_ok=True, parents=True)
 
-        logger.info(f"({idx + 1}/{len(output)}): Processing {save_path} with original shape {tuple(volume.shape)}...")
+        logger.info(
+            f"({idx + 1}/{len(output)}): Processing {save_path} with current shape {tuple(volume.shape)}"
+            f" and original shape {tuple(original_shape)}..."
+        )
 
         reconstruction = volume[:, 0].cpu().numpy()
         reconstruction = reconstruction.transpose(2, 3, 0, 1)
 
-        if "blood" in name.lower():
+        # This is because for BlackBlood, T1w, T2w we have 3D images with shape (sx, sy, sz) so the dataset before
+        # repeats each slice and stacks them to have a 4D image with shape (sx, sy, sz, st) where st = 12 for BlackBlood
+        # and st = 9 for T1w, T2w.
+        # So now we need to select only the central time
+        if tp == "BlackBlood":
             reconstruction = reconstruction[..., 6]
             reconstruction = np.expand_dims(reconstruction, axis=-1)
-        if "t1w" in name or "t2w" in name.lower():
+        elif tp in ["T1w", "T2w"]:
             reconstruction = reconstruction[..., 4]
             reconstruction = np.expand_dims(reconstruction, axis=-1)
 
-        img4ranking = run4Ranking_2025(reconstruction, name)
-        img4ranking = img4ranking.squeeze()
-        logger.info(f"({idx + 1}/{len(output)}): Writing {save_path} with shape {tuple(img4ranking.shape)}...")
+        img4ranking = reconstruction.reshape(*original_shape)
+
+        logger.info(
+            f"({idx + 1}/{len(output)}): Writing {save_path} with shape {tuple(img4ranking.shape)} and "
+            f"original shape {tuple(original_shape)}..."
+        )
 
         scipy.io.savemat(save_path, {output_key: img4ranking})
 

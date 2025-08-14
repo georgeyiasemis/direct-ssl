@@ -842,23 +842,40 @@ class MRIModelEngine(Engine):
             if slice_counter == volume_size:
                 filenames_seen += 1
 
+                original_shape_volume = data["original_shape"]
+                original_shape_volume_temp = []
+
+                for i, j in enumerate(original_shape_volume):
+                    if isinstance(j, torch.Tensor):
+                        original_shape_volume_temp.append(j.item())
+                    else:
+                        original_shape_volume_temp.append(j)
+
                 self.logger.info(
-                    "%i of %i volumes reconstructed: %s (shape = %s) in %.3fs.",
+                    "%i of %i volumes reconstructed: %s (shape = %s, original shape = %s) in %.3fs.",
                     filenames_seen,
                     num_for_this_process,
                     last_filename,
                     list(curr_volume.shape),
+                    original_shape_volume_temp,
                     time.time() - time_start,
                 )
                 # Maybe not needed.
                 del data
                 yield (
-                    (curr_volume, curr_target, reduce_list_of_dicts(loss_dict_list), filename)
+                    (
+                        curr_volume,
+                        curr_target,
+                        reduce_list_of_dicts(loss_dict_list),
+                        filename,
+                        original_shape_volume_temp,
+                    )
                     if add_target
                     else (
                         curr_volume,
                         reduce_list_of_dicts(loss_dict_list),
                         filename,
+                        original_shape_volume_temp,
                     )
                 )
 
@@ -902,7 +919,7 @@ class MRIModelEngine(Engine):
                 data_loader, loss_fns=loss_fns, add_target=True, crop=self.cfg.validation.crop  # type: ignore
             )
         ):
-            volume, target, volume_loss_dict, filename = output
+            volume, target, volume_loss_dict, filename, _ = output
             if self.ndim == 3:
                 # Put slice and time data together
                 sc, c, z, x, y = volume.shape

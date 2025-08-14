@@ -37,6 +37,7 @@ def setup_inference_save_to_h5(
     debug: bool = False,
     is_validation: bool = False,
     task_name: str = "TaskR1",
+    set_name: str = "ValidationSet",
 ) -> None:
     """This function contains most of the logic in DIRECT required to launch a multi-gpu / multi-node inference process.
 
@@ -121,12 +122,7 @@ def setup_inference_save_to_h5(
 
         # Perhaps aggregation to the main process would be most optimal here before writing.
         # The current way this write the volumes for each process.
-        write_output_to_mat(
-            output,
-            output_directory,
-            task_name,
-            output_key="img4ranking",
-        )
+        write_output_to_mat(output, output_directory, task_name, output_key="img4ranking", set_name=set_name)
 
 
 def build_inference_transforms(env, mask_func: Callable, dataset_cfg: DictConfig) -> Callable:
