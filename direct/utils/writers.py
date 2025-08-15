@@ -76,9 +76,14 @@ def write_output_to_mat(
             center, machine, patient, file = match.groups()
             typ = set_type(filename)
             path = (
-                pathlib.Path("MultiCoil") / typ / set_name / f"UnderSample_{task}"
-                if set_name == "ValidationSet"
-                else task / center / machine / patient / file
+                pathlib.Path("MultiCoil")
+                / typ
+                / set_name
+                / (f"UnderSample_{task}" if set_name == "ValidationSet" else task)
+                / center
+                / machine
+                / patient
+                / file
             )
 
         else:
